@@ -1,0 +1,6 @@
+/db_backups/
+/invoice/
+/test_data/
+/history_blackbox.txt
+/exceptions.log
+/monthly_lot.db

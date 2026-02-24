@@ -133,6 +133,11 @@ except Exception:
     DateEntry = None
 
 
+from tabs.customers_tab import build_customers_tab
+from tabs.trucks_tab import build_trucks_tab
+from tabs.contracts_tab import build_contracts_tab
+from tabs.invoices_tab import build_invoices_tab
+
 def log_action(event_type: str, details: str):
     """Append immutable action to history log file."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -283,9 +288,9 @@ class App(tk.Tk):
         nb.add(self.tab_histories, text="🕑 Histories")
 
         self._build_dashboard_tab()
-        self._build_customers_tab()
-        self._build_trucks_tab()
-        self._build_contracts_tab()
+        build_customers_tab(self, self.tab_customers)
+        build_trucks_tab(self, self.tab_trucks)
+        build_contracts_tab(self, self.tab_contracts)
         self._build_billing_tab()
         self._build_histories_tab()
         self._setup_right_click_menus()
@@ -378,7 +383,7 @@ class App(tk.Tk):
         sub.add(self.sub_statement, text="📊 Monthly Statement")
         sub.add(self.sub_overdue, text="⏰ Overdue")
 
-        self._build_invoices_tab()
+        build_invoices_tab(self, self.sub_invoices)
         self._build_statement_tab()
         self._build_overdue_tab()
 
@@ -1102,104 +1107,6 @@ class App(tk.Tk):
     # ---------------------------
     # Customers tab
     # ---------------------------
-    def _build_customers_tab(self):
-        frame = self.tab_customers
-        frame.columnconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=0)
-        frame.rowconfigure(1, weight=1)
-
-        top = ttk.Frame(frame)
-        top.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        top.columnconfigure(10, weight=1)
- 
-        ttk.Label(top, text="Search:").grid(row=0, column=0, sticky="w")
-        self.customer_search = ttk.Entry(top, width=30)
-        self.customer_search.grid(row=0, column=1, sticky="w", padx=6)
-        self.customer_search.bind("<Return>", lambda e: self.refresh_customers())
-        ttk.Button(top, text="Find", command=self.refresh_customers).grid(row=0, column=2, padx=6)
-        ttk.Button(top, text="Delete Selected", command=self.delete_customer).grid(row=0, column=4, padx=6)
-        data_frame = ttk.Frame(top)
-        data_frame.grid(row=0, column=5, columnspan=3, padx=6, sticky="ew")
-        ttk.Button(data_frame, text="Backup DB", command=self.backup_database).pack(side="left", padx=(0, 4))
-        ttk.Button(data_frame, text="Restore DB", command=self.restore_database).pack(side="left", padx=2)
-        ttk.Button(data_frame, text="Export CSV", command=self.export_customers_trucks_csv).pack(side="left", padx=2)
-        ttk.Button(data_frame, text="Import CSV", command=self.import_customers_trucks).pack(side="left", padx=2)
-        ttk.Button(top, text="Generate PDF Invoice", command=self.generate_customer_invoice_pdf).grid(row=0, column=8, padx=6)
-
-        # Table
-        cols = ("id", "name", "phone", "company", "notes", "outstanding", "trucks")
-        self.customer_tree = ttk.Treeview(frame, columns=cols, show="headings", height=18)
-        customer_headings = {
-            "id": "ID",
-            "name": "Name",
-            "phone": "Phone",
-            "company": "Company",
-            "notes": "Notes",
-            "outstanding": "Outstanding",
-            "trucks": "Trucks Parked",
-        }
-        for c in cols:
-            self.customer_tree.heading(c, text=customer_headings[c], anchor="center")
-        self.customer_tree.column("id", width=100, anchor="center", stretch=False)
-        self.customer_tree.column("name", width=360, anchor="center", stretch=False)
-        self.customer_tree.column("phone", width=220, anchor="center", stretch=False)
-        self.customer_tree.column("company", width=300, anchor="center", stretch=False)
-        self.customer_tree.column("notes", width=520, anchor="center", stretch=False)
-        self.customer_tree.column("outstanding", width=190, anchor="center", stretch=False)
-        self.customer_tree.column("trucks", width=220, anchor="center", stretch=False)
-        self.customer_tree.grid(row=1, column=0, sticky="nsew", padx=10)
-        customer_vsb = ttk.Scrollbar(frame, orient="vertical", command=self.customer_tree.yview)
-        self.customer_tree.configure(yscrollcommand=customer_vsb.set)
-        customer_vsb.grid(row=1, column=1, sticky="ns", padx=(0, 10))
-        self._init_tree_striping(self.customer_tree)
-        self.customer_tree.bind("<<TreeviewSelect>>", self._on_customer_tree_select)
-        self.customer_tree.bind("<Double-1>", lambda _e: self.edit_selected_customer())
-
-        # Add form
-        form = ttk.LabelFrame(frame, text="Add Customer", padding="10")
-        form.grid(row=2, column=0, sticky="ew", padx=10, pady=10)
-        self._customer_form = form  # Store reference for error display
-        for i in range(8):
-            form.columnconfigure(i, weight=1 if i == 7 else 0)
-
-        ttk.Label(form, text="Name*", font=("", 9, "bold")).grid(row=0, column=0, sticky="w", padx=6, pady=8)
-        self.c_name = ttk.Entry(form, width=25)
-        self.c_name.grid(row=0, column=1, sticky="w", padx=6, pady=8)
-        self._add_placeholder(self.c_name, "Enter customer name...")
-        self.c_name.bind("<Return>", lambda e: self.add_customer())
-
-        ttk.Label(form, text="Phone").grid(row=0, column=2, sticky="w", padx=6, pady=8)
-        self.c_phone = ttk.Entry(form, width=18)
-        self.c_phone.grid(row=0, column=3, sticky="w", padx=6, pady=8)
-        self._add_placeholder(self.c_phone, "Phone number...")
-        self.c_phone.bind("<Return>", lambda e: self.add_customer())
-
-        ttk.Label(form, text="Company").grid(row=0, column=4, sticky="w", padx=6, pady=8)
-        self.c_company = ttk.Entry(form, width=22)
-        self.c_company.grid(row=0, column=5, sticky="w", padx=6, pady=8)
-        self._add_placeholder(self.c_company, "Company name...")
-        self.c_company.bind("<Return>", lambda e: self.add_customer())
-
-        ttk.Label(form, text="Notes").grid(row=1, column=0, sticky="w", padx=6, pady=8)
-        self.c_notes = ttk.Entry(form, width=80)
-        self.c_notes.grid(row=1, column=1, columnspan=5, sticky="ew", padx=6, pady=8)
-        self._add_placeholder(self.c_notes, "Additional notes...")
-        self.c_notes.bind("<Return>", lambda e: self.add_customer())
-
-        btn_frame = ttk.Frame(form)
-        btn_frame.grid(row=0, column=6, rowspan=2, padx=8, pady=6)
-        ttk.Button(btn_frame, text="Add Customer", command=self.add_customer).pack(ipadx=8, ipady=6)
-        ttk.Label(btn_frame, text="(Enter in any field)", font=("", 8), foreground="gray").pack()
-
-        self.view_trucks_btn = ttk.Button(
-            form,
-            text="View Trucks",
-            command=self._view_selected_customer_trucks,
-            style="ViewTrucks.TButton",
-            state="disabled",
-        )
-        self.view_trucks_btn.grid(row=0, column=7, rowspan=2, sticky="nsew", padx=(16, 6), pady=8)
-
     def _clear_customer_search(self):
         self.customer_search.delete(0, tk.END)
         self.refresh_customers()
@@ -1341,6 +1248,9 @@ class App(tk.Tk):
         if do_backup:
             self.backup_database()
 
+    # ---------------------------
+    # Thin action wrappers
+    # ---------------------------
     def export_customers_trucks_csv(self):
         export_customers_trucks_csv_action(
             app=self,
@@ -1361,7 +1271,6 @@ class App(tk.Tk):
 
 
     def refresh_customers(self):
-        q = self.customer_search.get().strip()
         refresh_customers_action(
             app=self,
             db=self.db,
@@ -1399,13 +1308,112 @@ class App(tk.Tk):
         )
 
     def show_customer_ledger(self):
-        sel = self.customer_tree.selection()
         show_customer_ledger_action(
             app=self,
             db=self.db,
             tag_colors=TAG_COLORS,
             log_action_cb=log_action,
             export_customer_ledger_xlsx_cb=export_customer_ledger_xlsx,
+        )
+
+    def record_payment_for_selected_truck(self):
+        record_payment_for_selected_truck_action(
+            app=self,
+            db=self.db,
+            open_payment_form_for_contract_cb=self._open_payment_form_for_contract,
+        )
+
+    def refresh_trucks(self):
+        refresh_trucks_action(
+            app=self,
+            db=self.db,
+            show_invalid_cb=self._show_invalid,
+            row_stripe_tag_cb=self._row_stripe_tag,
+            get_contract_outstanding_as_of_cb=self._get_contract_outstanding_as_of,
+            outstanding_tag_from_text_cb=self._outstanding_tag_from_text,
+            truck_search_mode=getattr(self, "_truck_search_mode", "all"),
+            customer_filter_id=getattr(self, "_truck_filter_customer_id", None),
+        )
+
+    def add_truck(self):
+        add_truck_action(
+            app=self,
+            db=self.db,
+            get_entry_value_cb=self._get_entry_value,
+            get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
+            clear_inline_errors_cb=self._clear_inline_errors,
+            show_inline_error_cb=self._show_inline_error,
+            show_invalid_cb=self._show_invalid,
+            add_placeholder_cb=self._add_placeholder,
+            log_action_cb=log_action,
+        )
+
+    def delete_truck(self):
+        delete_truck_action(
+            app=self,
+            db=self.db,
+            log_action_cb=log_action,
+        )
+
+    def record_payment_for_selected_contract(self):
+        record_payment_for_selected_contract_action(
+            app=self,
+            open_payment_form_for_contract_cb=self._open_payment_form_for_contract,
+        )
+
+    def refresh_contracts(self):
+        refresh_contracts_action(
+            app=self,
+            db=self.db,
+            status_badge_cb=self._status_badge,
+            row_stripe_tag_cb=self._row_stripe_tag,
+            get_contract_outstanding_as_of_cb=self._get_contract_outstanding_as_of,
+            outstanding_tag_from_amount_cb=self._outstanding_tag_from_amount,
+            customer_filter_id=getattr(self, "_truck_filter_customer_id", None),
+        )
+
+    def create_contract(self):
+        create_contract_action(
+            app=self,
+            db=self.db,
+            get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
+            get_selected_truck_id_cb=self._get_selected_truck_id_from_combo,
+            get_entry_value_cb=self._get_entry_value,
+            clear_inline_errors_cb=self._clear_inline_errors,
+            show_inline_error_cb=self._show_inline_error,
+            show_invalid_cb=self._show_invalid,
+            log_action_cb=log_action,
+        )
+
+    def toggle_contract(self):
+        toggle_contract_action(
+            app=self,
+            db=self.db,
+        )
+
+    def edit_contract(self):
+        edit_contract_action(
+            app=self,
+            db=self.db,
+            get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
+            get_selected_truck_id_cb=self._get_selected_truck_id_from_combo,
+            show_invalid_cb=self._show_invalid,
+            log_action_cb=log_action,
+        )
+
+    def delete_contract(self):
+        delete_contract_action(
+            app=self,
+            db=self.db,
+            log_action_cb=log_action,
+        )
+
+    def show_contract_payment_history(self):
+        show_contract_payment_history_action(
+            app=self,
+            db=self.db,
+            get_contract_outstanding_as_of_cb=self._get_contract_outstanding_as_of,
+            show_contract_payment_history_dialog_cb=show_contract_payment_history,
         )
 
     def _set_selected_customer(self, customer_id: int):
@@ -1418,135 +1426,6 @@ class App(tk.Tk):
     # ---------------------------
     # Trucks tab
     # ---------------------------
-    def _build_trucks_tab(self):
-        frame = self.tab_trucks
-        frame.columnconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=0)
-        frame.rowconfigure(1, weight=1)
-
-        top = ttk.Frame(frame)
-        top.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        top.columnconfigure(8, weight=1)
-
-        ttk.Label(top, text="Search (plate/name):").grid(row=0, column=0, sticky="w")
-        self.truck_search = ttk.Entry(top, width=20)
-        self.truck_search.grid(row=0, column=1, sticky="w", padx=6)
-        self.truck_search.bind("<Return>", lambda e: self.refresh_trucks())
-        self.truck_search.bind("<KeyRelease>", self._on_truck_search_keyrelease)
-        self._truck_search_mode = "all"
-        self._truck_filter_customer_id = None
-        ttk.Button(top, text="Find", command=self.refresh_trucks).grid(row=0, column=2, padx=6)
-        ttk.Button(top, text="Clear", command=self._clear_truck_search).grid(row=0, column=3, padx=6)
-        ttk.Button(top, text="Delete Selected", command=self.delete_truck).grid(row=0, column=4, padx=6)
-        ttk.Button(top, text="💰  Record Payment", command=self.record_payment_for_selected_truck, style="Payment.TButton").grid(row=0, column=5, padx=6)
-        ttk.Button(top, text="View Contract History", command=self.view_selected_truck_contract_history).grid(row=0, column=6, padx=6)
-
-        cols = ("id", "plate", "state", "make", "model", "customer", "outstanding")
-        self.truck_tree = ttk.Treeview(frame, columns=cols, show="headings", height=18)
-        truck_headings = {"id": "ID", "plate": "Plate", "state": "State", "make": "Make", "model": "Model", "customer": "Customer", "outstanding": "Outstanding"}
-        for c in cols:
-            self.truck_tree.heading(c, text=truck_headings[c], anchor="center")
-            width_map = {"id": 100, "plate": 180, "state": 80, "make": 180, "model": 180, "customer": 420, "outstanding": 170}
-            self.truck_tree.column(c, width=width_map.get(c, 150), anchor="center")
-        self.truck_tree.column("plate", anchor="center")
-        self.truck_tree.column("make", anchor="center")
-        self.truck_tree.column("model", anchor="center")
-        # Allow the customer column to stretch and use remaining horizontal space
-        self.truck_tree.column("customer", anchor="center", stretch=True)
-        self.truck_tree.column("outstanding", anchor="center")
-        self.truck_tree.grid(row=1, column=0, sticky="nsew", padx=10)
-        truck_vsb = ttk.Scrollbar(frame, orient="vertical", command=self.truck_tree.yview)
-        self.truck_tree.configure(yscrollcommand=truck_vsb.set)
-        truck_vsb.grid(row=1, column=1, sticky="ns", padx=(0, 10))
-        self._init_tree_striping(self.truck_tree)
-        self.truck_tree.bind("<Double-1>", lambda _e: self.view_selected_truck_contract_history())
-
-        form = ttk.LabelFrame(frame, text="Add Truck", padding="14")
-        form.grid(row=2, column=0, sticky="ew", padx=10, pady=(12, 14))
-        self._truck_form = form  # Store reference for error display
-        for i in range(13):
-            form.columnconfigure(i, weight=1 if i in (3, 7, 11) else 0)
-        form.rowconfigure(0, minsize=44)
-        form.rowconfigure(1, minsize=44)
-
-        ttk.Label(form, text="Plate*", font=("", 9, "bold")).grid(row=0, column=0, sticky="w", padx=6, pady=8)
-        self.t_plate = ttk.Entry(form, width=16)
-        self.t_plate.grid(row=0, column=1, sticky="w", padx=6, pady=8)
-        self._add_placeholder(self.t_plate, "License plate...")
-        self.t_plate.bind("<Return>", lambda e: self.add_truck())
-
-        ttk.Label(form, text="State").grid(row=0, column=2, sticky="w", padx=6, pady=8)
-        self.t_state = ttk.Entry(form, width=8)
-        self.t_state.grid(row=0, column=3, sticky="w", padx=6, pady=8)
-        self._add_placeholder(self.t_state, "CA")
-        self.t_state.bind("<Return>", lambda e: self.add_truck())
-
-        ttk.Label(form, text="Make").grid(row=0, column=4, sticky="w", padx=6, pady=8)
-        self.t_make = ttk.Entry(form, width=14)
-        self.t_make.grid(row=0, column=5, sticky="w", padx=6, pady=8)
-        self._add_placeholder(self.t_make, "Ford")
-        self.t_make.bind("<Return>", lambda e: self.add_truck())
-
-        ttk.Label(form, text="Model").grid(row=0, column=6, sticky="w", padx=6, pady=8)
-        self.t_model = ttk.Entry(form, width=14)
-        self.t_model.grid(row=0, column=7, sticky="w", padx=6, pady=8)
-        self._add_placeholder(self.t_model, "F-150")
-        self.t_model.bind("<Return>", lambda e: self.add_truck())
-
-        ttk.Label(form, text="Contract Start").grid(row=0, column=8, sticky="w", padx=6, pady=8)
-        start_wrap = ttk.Frame(form)
-        start_wrap.grid(row=0, column=9, sticky="w", padx=6, pady=8)
-        self.t_contract_start = self._create_date_input(start_wrap, width=12, default_iso=None)
-        self.t_contract_start.pack(side="left")
-        # Only add a calendar button when the created widget does not already
-        # provide its own dropdown (e.g. a `DateEntry`). This avoids duplicate
-        # calendar arrows in the UI.
-        try:
-            if not (DateEntry is not None and isinstance(self.t_contract_start, DateEntry)):
-                ttk.Button(start_wrap, text="📅", width=3, command=lambda: self._open_calendar_for_widget(self.t_contract_start)).pack(side="left", padx=(6, 0))
-        except Exception:
-            ttk.Button(start_wrap, text="📅", width=3, command=lambda: self._open_calendar_for_widget(self.t_contract_start)).pack(side="left", padx=(6, 0))
-        self.t_contract_start.bind("<Return>", lambda e: self.add_truck())
-
-        ttk.Label(form, text="Contract End").grid(row=0, column=10, sticky="w", padx=6, pady=8)
-        end_wrap = ttk.Frame(form)
-        end_wrap.grid(row=0, column=11, sticky="w", padx=6, pady=8)
-        self.t_contract_end = self._create_date_input(end_wrap, width=12, default_iso=None)
-        self.t_contract_end.pack(side="left")
-        try:
-            if not (DateEntry is not None and isinstance(self.t_contract_end, DateEntry)):
-                ttk.Button(end_wrap, text="📅", width=3, command=lambda: self._open_calendar_for_widget(self.t_contract_end)).pack(side="left", padx=(6, 0))
-        except Exception:
-            ttk.Button(end_wrap, text="📅", width=3, command=lambda: self._open_calendar_for_widget(self.t_contract_end)).pack(side="left", padx=(6, 0))
-        self.t_contract_end.bind("<Return>", lambda e: self.add_truck())
-
-        ttk.Label(form, text="Customer").grid(row=1, column=0, sticky="w", padx=6, pady=8)
-        self.truck_customer_combo = ttk.Combobox(form, width=36)
-        self.truck_customer_combo.grid(row=1, column=1, columnspan=3, sticky="ew", padx=6, pady=8)
-        self.truck_customer_combo.bind("<Return>", lambda e: self.add_truck())
-        self._make_searchable_combo(self.truck_customer_combo)
-
-        ttk.Button(form, text="Find Customer", command=self._open_truck_customer_picker).grid(
-            row=1, column=4, sticky="w", padx=6, pady=8
-        )
-
-        ttk.Label(form, text="Notes").grid(row=1, column=5, sticky="w", padx=6, pady=8)
-        self.t_notes = ttk.Entry(form, width=34)
-        self.t_notes.grid(row=1, column=6, columnspan=2, sticky="ew", padx=6, pady=8)
-        self._add_placeholder(self.t_notes, "Additional notes...")
-        self.t_notes.bind("<Return>", lambda e: self.add_truck())
-
-        ttk.Label(form, text="Contract Cost").grid(row=1, column=8, sticky="w", padx=6, pady=8)
-        self.t_contract_rate = ttk.Entry(form, width=12)
-        self.t_contract_rate.grid(row=1, column=9, sticky="w", padx=6, pady=8)
-        self._add_placeholder(self.t_contract_rate, "Monthly cost...")
-        self.t_contract_rate.bind("<Return>", lambda e: self.add_truck())
-
-        btn_frame = ttk.Frame(form)
-        btn_frame.grid(row=0, column=12, rowspan=2, padx=(12, 8), pady=8)
-        ttk.Button(btn_frame, text="Add Truck", command=self.add_truck).pack(ipadx=10, ipady=6)
-        ttk.Label(btn_frame, text="(Enter in any field)", font=("", 8), foreground="gray").pack()
-
     def _clear_truck_search(self):
         self.truck_search.delete(0, tk.END)
         self._sync_search_boxes_from_truck_search()
@@ -1624,154 +1503,9 @@ class App(tk.Tk):
         }
         show_contract_payment_history(self, contract_info, rows)
 
-    def record_payment_for_selected_truck(self):
-        record_payment_for_selected_truck_action(
-            app=self,
-            db=self.db,
-            open_payment_form_for_contract_cb=self._open_payment_form_for_contract,
-        )
-
-    def refresh_trucks(self):
-        refresh_trucks_action(
-            app=self,
-            db=self.db,
-            show_invalid_cb=self._show_invalid,
-            row_stripe_tag_cb=self._row_stripe_tag,
-            get_contract_outstanding_as_of_cb=self._get_contract_outstanding_as_of,
-            outstanding_tag_from_text_cb=self._outstanding_tag_from_text,
-            truck_search_mode=getattr(self, "_truck_search_mode", "all"),
-            customer_filter_id=getattr(self, "_truck_filter_customer_id", None),
-        )
-
-    def add_truck(self):
-        add_truck_action(
-            app=self,
-            db=self.db,
-            get_entry_value_cb=self._get_entry_value,
-            get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
-            clear_inline_errors_cb=self._clear_inline_errors,
-            show_inline_error_cb=self._show_inline_error,
-            show_invalid_cb=self._show_invalid,
-            add_placeholder_cb=self._add_placeholder,
-            log_action_cb=log_action,
-        )
-
-    def delete_truck(self):
-        delete_truck_action(
-            app=self,
-            db=self.db,
-            log_action_cb=log_action,
-        )
-
     # ---------------------------
     # Contracts tab
     # ---------------------------
-    def _build_contracts_tab(self):
-        frame = self.tab_contracts
-        frame.columnconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=0)
-        frame.rowconfigure(1, weight=1)
-
-        top = ttk.Frame(frame)
-        top.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 0))
-        top.columnconfigure(6, weight=1)
-        ttk.Label(top, text="(Search by name)").grid(row=0, column=0, sticky="w")
-        self.contract_search = ttk.Entry(top, width=30)
-        self.contract_search.grid(row=0, column=1, sticky="w", padx=6)
-        self.contract_search.bind("<Return>", lambda _e: self.refresh_contracts())
-        ttk.Button(top, text="Find", command=self.refresh_contracts).grid(row=0, column=2, padx=6)
-        ttk.Button(top, text="Clear", command=self._clear_contract_search).grid(row=0, column=3, padx=6)
-
-        cols = ("contract_id", "status", "customer", "scope", "rate", "start", "end", "outstanding")
-        self.contract_tree = ttk.Treeview(frame, columns=cols, show="headings", height=18)
-        contract_headings = {"contract_id": "Contract ID", "status": "Status", "customer": "Customer", "scope": "Plate", "rate": "Rate", "start": "Start", "end": "End", "outstanding": "Outstanding"}
-        for c in cols:
-            self.contract_tree.heading(c, text=contract_headings[c], anchor="center")
-            width = 150
-            if c == "customer":
-                width = 320
-            if c == "scope":
-                width = 300
-            if c == "contract_id":
-                width = 160
-            if c == "status":
-                width = 180
-            if c == "outstanding":
-                width = 170
-            self.contract_tree.column(c, width=width, anchor="center")
-        self.contract_tree.column("customer", anchor="center")
-        self.contract_tree.column("scope", anchor="center")
-        self.contract_tree.grid(row=1, column=0, sticky="nsew", padx=10, pady=(10, 0))
-        contract_vsb = ttk.Scrollbar(frame, orient="vertical", command=self.contract_tree.yview)
-        self.contract_tree.configure(yscrollcommand=contract_vsb.set)
-        contract_vsb.grid(row=1, column=1, sticky="ns", padx=(0, 10), pady=(10, 0))
-        self._init_tree_striping(self.contract_tree)
-
-        btns = ttk.Frame(frame)
-        btns.grid(row=2, column=0, sticky="ew", padx=10, pady=10)
-        ttk.Button(btns, text="💰  Record Payment", command=self.record_payment_for_selected_contract, style="Payment.TButton").pack(side="left", padx=(0, 8))
-        ttk.Button(btns, text="Refresh", command=self.refresh_contracts).pack(side="left")
-        ttk.Button(btns, text="Toggle Active/Inactive", command=self.toggle_contract).pack(side="left", padx=8)
-        ttk.Button(btns, text="Delete Selected", command=self.delete_contract, style="Warning.TButton").pack(side="left", padx=8)
-        ttk.Frame(btns).pack(side="left", fill="x", expand=True)
-        ttk.Button(btns, text="📝 Create Contract", command=self.create_contract, style="CreateContract.TButton").pack(side="right", ipadx=12, ipady=4)
-
-        form = ttk.LabelFrame(frame, text="Create Contract")
-        form.grid(row=3, column=0, sticky="ew", padx=10, pady=10)
-        self._contract_form = form  # Store reference for error display
-        for i in range(12):
-            form.columnconfigure(i, weight=1 if i in (11,) else 0)
-
-        ttk.Label(form, text="Customer*").grid(row=0, column=0, sticky="w", padx=6, pady=6)
-        self.contract_customer_combo = ttk.Combobox(form, width=40)
-        self.contract_customer_combo.grid(row=0, column=1, columnspan=3, sticky="w", padx=6, pady=6)
-        self._make_searchable_combo(self.contract_customer_combo)
-        self.contract_customer_combo.bind("<<ComboboxSelected>>", self._on_contract_customer_changed)
-        self.contract_customer_combo.bind("<FocusOut>", self._on_contract_customer_changed)
-
-        ttk.Button(form, text="Find Customer", command=self._open_contract_customer_picker).grid(
-            row=0, column=4, sticky="w", padx=6, pady=6
-        )
-
-        ttk.Label(form, text="Contract scope").grid(row=0, column=5, sticky="w", padx=6, pady=6)
-        self.contract_scope = tk.StringVar(value="per_truck")
-        ttk.Radiobutton(form, text="Per truck", variable=self.contract_scope, value="per_truck",
-                        command=self._on_scope_change).grid(row=0, column=6, sticky="w", padx=6)
-        ttk.Radiobutton(form, text="Customer-level", variable=self.contract_scope, value="customer_level",
-                        command=self._on_scope_change).grid(row=0, column=7, sticky="w", padx=6)
-
-        ttk.Label(form, text="Truck (if per truck)").grid(row=1, column=0, sticky="w", padx=6, pady=6)
-        self.contract_truck_combo = ttk.Combobox(form, width=30)
-        self.contract_truck_combo.grid(row=1, column=1, columnspan=2, sticky="w", padx=6, pady=6)
-        self._make_searchable_combo(self.contract_truck_combo)
-
-        ttk.Label(form, text="Rate ($/mo)*").grid(row=1, column=3, sticky="w", padx=6, pady=6)
-        self.contract_rate = ttk.Entry(form, width=12)
-        self.contract_rate.grid(row=1, column=4, sticky="w", padx=6, pady=6)
-        self._add_placeholder(self.contract_rate, "0.00")
-        self.contract_rate.bind("<Return>", lambda e: self.create_contract())
-
-        ttk.Label(form, text="Start YYYY-MM-DD").grid(row=1, column=5, sticky="w", padx=6, pady=6)
-        start_wrap = ttk.Frame(form)
-        start_wrap.grid(row=1, column=6, sticky="w", padx=6, pady=6)
-        self.contract_start = self._create_date_input(start_wrap, width=12, default_iso=today().isoformat())
-        self.contract_start.pack(side="left")
-
-        ttk.Label(form, text="End YYYY-MM-DD (optional)").grid(row=1, column=7, sticky="w", padx=6, pady=6)
-        end_wrap = ttk.Frame(form)
-        end_wrap.grid(row=1, column=8, sticky="w", padx=6, pady=6)
-        self.contract_end = self._create_date_input(end_wrap, width=12, default_iso=None)
-        self.contract_end.pack(side="left")
-        self._make_optional_date_clear_on_blur(self.contract_end)
-
-        ttk.Label(form, text="Notes").grid(row=2, column=0, sticky="w", padx=6, pady=6)
-        self.contract_notes = ttk.Entry(form, width=80)
-        self.contract_notes.grid(row=2, column=1, columnspan=10, sticky="ew", padx=6, pady=6)
-        self.contract_notes.bind("<Return>", lambda e: self.create_contract())
-
-        self._on_scope_change()
-        self._on_contract_customer_changed()
-
     def _on_scope_change(self):
         if self.contract_scope.get() == "customer_level":
             self.contract_truck_combo.configure(state="disabled")
@@ -1838,182 +1572,9 @@ class App(tk.Tk):
         self.invoice_tree.see(found_iid)
         return True
 
-    def record_payment_for_selected_contract(self):
-        record_payment_for_selected_contract_action(
-            app=self,
-            open_payment_form_for_contract_cb=self._open_payment_form_for_contract,
-        )
-
-    def refresh_contracts(self):
-        refresh_contracts_action(
-            app=self,
-            db=self.db,
-            status_badge_cb=self._status_badge,
-            row_stripe_tag_cb=self._row_stripe_tag,
-            get_contract_outstanding_as_of_cb=self._get_contract_outstanding_as_of,
-            outstanding_tag_from_amount_cb=self._outstanding_tag_from_amount,
-            customer_filter_id=getattr(self, "_truck_filter_customer_id", None),
-        )
-
-    def create_contract(self):
-        create_contract_action(
-            app=self,
-            db=self.db,
-            get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
-            get_selected_truck_id_cb=self._get_selected_truck_id_from_combo,
-            get_entry_value_cb=self._get_entry_value,
-            clear_inline_errors_cb=self._clear_inline_errors,
-            show_inline_error_cb=self._show_inline_error,
-            show_invalid_cb=self._show_invalid,
-            log_action_cb=log_action,
-        )
-
-    def toggle_contract(self):
-        toggle_contract_action(
-            app=self,
-            db=self.db,
-        )
-
-    def edit_contract(self):
-        edit_contract_action(
-            app=self,
-            db=self.db,
-            get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
-            get_selected_truck_id_cb=self._get_selected_truck_id_from_combo,
-            show_invalid_cb=self._show_invalid,
-            log_action_cb=log_action,
-        )
-
-    def delete_contract(self):
-        delete_contract_action(
-            app=self,
-            db=self.db,
-            log_action_cb=log_action,
-        )
-
-    def show_contract_payment_history(self):
-        show_contract_payment_history_action(
-            app=self,
-            db=self.db,
-            get_contract_outstanding_as_of_cb=self._get_contract_outstanding_as_of,
-            show_contract_payment_history_dialog_cb=show_contract_payment_history,
-        )
-
     # ---------------------------
     # Invoices tab
     # ---------------------------
-    def _build_invoices_tab(self):
-        frame = self.sub_invoices
-        frame.columnconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=0)
-        frame.rowconfigure(2, weight=1)
-
-        controls = ttk.LabelFrame(frame, text="Billing Date Controls", style="BillingControls.TLabelframe")
-        controls.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        controls.columnconfigure(12, weight=1)
-
-        ttk.Label(controls, text="As-of Date (YYYY-MM-DD):").grid(row=0, column=0, sticky="w", padx=6, pady=6)
-        self.invoice_date = self._create_date_input(controls, width=12, default_iso=today().isoformat())
-        self.invoice_date.grid(row=0, column=1, sticky="w", padx=6, pady=6)
-
-        ttk.Button(controls, text="Recalculate", command=self.refresh_invoices).grid(row=0, column=3, padx=6)
-        ttk.Button(controls, text="Collapse All", command=self.collapse_all_invoice_groups).grid(row=0, column=4, padx=6)
-        ttk.Button(controls, text="Expand All", command=self.expand_all_invoice_groups).grid(row=0, column=5, padx=6)
-        ttk.Label(controls, text="Customer:").grid(row=0, column=6, sticky="e", padx=(10, 4), pady=6)
-        self.invoice_customer_search = ttk.Entry(controls, width=22)
-        self.invoice_customer_search.grid(row=0, column=7, sticky="w", padx=4, pady=6)
-        self.invoice_customer_search.bind("<Return>", lambda _e: self.refresh_invoices())
-        ttk.Button(controls, text="Clear", command=self._clear_invoice_customer_search).grid(row=0, column=8, padx=6)
-        self.invoice_total_balance_var = tk.StringVar(value="$0.00")
-        ttk.Label(controls, text="Total Outstanding:").grid(row=0, column=9, sticky="e", padx=(14, 4), pady=6)
-        ttk.Label(controls, textvariable=self.invoice_total_balance_var, foreground="#b00020", font=FONTS["heading"]).grid(row=0, column=10, sticky="w", padx=4, pady=6)
-
-        # ── Action bar (row=1) ─────────────────────────────────────────────────
-        action_bar = ttk.Frame(frame, style="BillingAction.TFrame", padding="8")
-        action_bar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 6))
-        action_bar.columnconfigure(4, weight=1)
-
-        ttk.Button(
-            action_bar, text="💰  Record Payment",
-            command=self._open_payment_form_window,
-            style="Payment.TButton",
-        ).grid(row=0, column=0, padx=(4, 8), pady=4, ipadx=4)
-
-        ttk.Button(
-            action_bar, text="📜  View History",
-            command=self.show_contract_payment_history,
-        ).grid(row=0, column=1, padx=4, pady=4)
-
-        ttk.Button(
-            action_bar, text="⚠️  Reset Payments",
-            command=self.reset_contract_payments,
-            style="Warning.TButton",
-        ).grid(row=0, column=2, padx=4, pady=4)
-
-        ttk.Label(
-            action_bar,
-            text="  ← Select a customer or plate row in the table below, then click an action",
-            foreground="#777777",
-            font=(FONTS["base"][0], max(FONTS["base"][1] - 1, 9), "italic"),
-        ).grid(row=0, column=4, sticky="w", padx=12)
-
-        cols = ("contract_id", "customer", "scope", "rate", "start", "end", "months", "expected", "paid", "balance", "status")
-        self.invoice_tree = ttk.Treeview(frame, columns=cols, show="headings", height=18, style="Billing.Treeview")
-        invoice_headings = {
-            "contract_id": "",
-            "customer": "Customer",
-            "scope": "Plate",
-            "rate": "Rate",
-            "start": "Start",
-            "end": "End",
-            "months": "Elapsed Months",
-            "expected": "Expected",
-            "paid": "Paid",
-            "balance": "Outstanding",
-            "status": "Status",
-        }
-        for c in cols:
-            self.invoice_tree.heading(
-                c, text=invoice_headings[c], anchor="center",
-                command=lambda _c=c: self._sort_invoice_tree(_c),
-            )
-            width = 150
-            if c == "customer":
-                width = 320
-            if c == "scope":
-                width = 300
-            if c in ("start", "end"):
-                width = 140
-            if c == "contract_id":
-                width = 1
-            if c == "months":
-                width = 180
-            if c in ("expected", "paid", "balance"):
-                width = 160
-            if c == "status":
-                width = 180
-            self.invoice_tree.column(c, width=width, anchor="center")
-        self.invoice_tree.column("contract_id", width=1, minwidth=0, stretch=False)
-        self.invoice_tree.column("customer", anchor="center")
-        self.invoice_tree.column("scope", anchor="center")
-        self.invoice_tree.tag_configure("status_due", 
-                                        foreground=TAG_COLORS["status_due"]["foreground"],
-                                        background=TAG_COLORS["status_due"]["background"],
-                                        font=TAG_COLORS["status_due"]["font"])
-        self.invoice_tree.tag_configure("status_paid", 
-                                        foreground=TAG_COLORS["status_paid"]["foreground"],
-                                        background=TAG_COLORS["status_paid"]["background"])
-        self.invoice_tree.tag_configure("bal_zero", foreground="#2e7d32")
-        self.invoice_tree.tag_configure("bal_no_contract", foreground="#b58900")
-        self.invoice_tree.tag_configure("bal_due", foreground="#b00020")
-        self.invoice_tree.grid(row=2, column=0, sticky="nsew", padx=10)
-        invoice_vsb = ttk.Scrollbar(frame, orient="vertical", command=self.invoice_tree.yview)
-        self.invoice_tree.configure(yscrollcommand=invoice_vsb.set)
-        invoice_vsb.grid(row=2, column=1, sticky="ns", padx=(0, 10))
-        self.invoice_tree.bind("<<TreeviewOpen>>", self._on_invoice_tree_open_close)
-        self.invoice_tree.bind("<<TreeviewClose>>", self._on_invoice_tree_open_close)
-        self.invoice_tree.bind("<Double-1>", self._toggle_invoice_parent_row)
-
     def _invoice_group_label(self, contract_count: int, is_open: bool) -> str:
         arrow = "▼" if is_open else "▶"
         noun = "Contract" if contract_count == 1 else "Contracts"
