@@ -30,6 +30,7 @@ a = Analysis(
     binaries=[],
     datas=[
         # Include any data files if present
+        ('app/logo.png', 'app'),  # Include the logo file
     ],
     hiddenimports=hidden_imports,
     hookspath=[],

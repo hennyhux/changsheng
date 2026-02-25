@@ -103,6 +103,7 @@ def build_invoices_tab(app, frame):
     app.invoice_tree.column("contract_id", width=1, minwidth=0, stretch=False)
     app.invoice_tree.column("customer", anchor="center")
     app.invoice_tree.column("scope", anchor="center")
+    app._init_tree_striping(app.invoice_tree)
     app.invoice_tree.tag_configure("status_due", 
                                     foreground=TAG_COLORS["status_due"]["foreground"],
                                     background=TAG_COLORS["status_due"]["background"],
@@ -113,6 +114,10 @@ def build_invoices_tab(app, frame):
     app.invoice_tree.tag_configure("bal_zero", foreground="#2e7d32")
     app.invoice_tree.tag_configure("bal_no_contract", foreground="#b58900")
     app.invoice_tree.tag_configure("bal_due", foreground="#b00020")
+    app.invoice_tree.tag_configure("invoice_parent_expanded", background="#dff0ff")
+    app.invoice_tree.tag_configure("invoice_child_even", background="#ffffff")
+    app.invoice_tree.tag_configure("invoice_child_odd", background="#f9fbff")
+
     app.invoice_tree.grid(row=2, column=0, sticky="nsew", padx=10)
     invoice_vsb = ttk.Scrollbar(frame, orient="vertical", command=app.invoice_tree.yview)
     app.invoice_tree.configure(yscrollcommand=invoice_vsb.set)

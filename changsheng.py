@@ -1326,15 +1326,44 @@ class App(tk.Tk):
         values = list(self.invoice_tree.item(parent_iid, "values"))
         if not values:
             return
-        values[0] = self._invoice_group_label(children_count, is_open)
+        values[2] = self._invoice_group_label(children_count, is_open)
         self.invoice_tree.item(parent_iid, values=values)
 
     def _refresh_invoice_parent_labels(self):
         for parent_iid in self.invoice_tree.get_children(""):
             self._update_invoice_parent_label(parent_iid)
 
+    def _apply_invoice_tree_visual_tags(self):
+        for parent_index, parent_iid in enumerate(self.invoice_tree.get_children("")):
+            parent_values = self.invoice_tree.item(parent_iid, "values")
+            if not parent_values:
+                continue
+
+            parent_balance = parent_values[9] if len(parent_values) > 9 else ""
+            parent_balance_tag = self._outstanding_tag_from_text(str(parent_balance))
+            parent_stripe_tag = self._row_stripe_tag(parent_index)
+            is_open = bool(self.invoice_tree.item(parent_iid, "open"))
+            if is_open:
+                self.invoice_tree.item(
+                    parent_iid,
+                    tags=("invoice_parent_expanded", parent_balance_tag),
+                )
+            else:
+                self.invoice_tree.item(
+                    parent_iid,
+                    tags=(parent_stripe_tag, parent_balance_tag),
+                )
+
+            for child_index, child_iid in enumerate(self.invoice_tree.get_children(parent_iid)):
+                child_values = self.invoice_tree.item(child_iid, "values")
+                child_balance = child_values[9] if child_values and len(child_values) > 9 else ""
+                child_balance_tag = self._outstanding_tag_from_text(str(child_balance))
+                child_stripe_tag = "invoice_child_even" if child_index % 2 == 0 else "invoice_child_odd"
+                self.invoice_tree.item(child_iid, tags=(child_stripe_tag, child_balance_tag))
+
     def _on_invoice_tree_open_close(self, _event=None):
         self._refresh_invoice_parent_labels()
+        self._apply_invoice_tree_visual_tags()
 
     def _toggle_invoice_parent_row(self, event: tk.Event):
         row_id = self.invoice_tree.identify_row(event.y)

@@ -26,7 +26,7 @@ def show_import_preview(
 
     preview = tk.Toplevel(parent)
     preview.title("Import Preview")
-    preview.geometry("780x540")
+    preview.geometry("1000x540")
     preview.resizable(True, True)
     preview.transient(parent)
     preview.grab_set()

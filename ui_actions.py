@@ -2120,9 +2120,9 @@ def refresh_invoices_action(
             "",
             "end",
             values=(
-                invoice_group_label_cb(len(group.contracts), parent_is_open),
-                group.customer_name,
                 "",
+                group.customer_name,
+                invoice_group_label_cb(len(group.contracts), parent_is_open),
                 "",
                 "",
                 "",
@@ -2165,6 +2165,8 @@ def refresh_invoices_action(
 
     app.invoice_total_balance_var.set(f"${total_outstanding:.2f}")
     refresh_invoice_parent_labels_cb()
+    if hasattr(app, "_apply_invoice_tree_visual_tags"):
+        app._apply_invoice_tree_visual_tags()
 
     if selected_child_iid:
         app.invoice_tree.selection_set(selected_child_iid)
