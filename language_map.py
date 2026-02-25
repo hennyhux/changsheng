@@ -4,7 +4,7 @@ English to Chinese translation pairs
 """
 
 EN_TO_ZH = {
-    "Monthly Truck Lot Tracker": "月度卡车停车场管理",
+    "Changsheng - Truck Lot Tracker": "长生 - 卡车停车场管理",
     "📈 Dashboard": "📈 仪表盘",
     "👥 Customers": "👥 客户",
     "🚚 Trucks": "🚚 卡车",

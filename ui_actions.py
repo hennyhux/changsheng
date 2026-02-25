@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from database_service import DatabaseService
 
 
-logger = logging.getLogger("truck_lot_app")
+logger = logging.getLogger("changsheng_app")
 
 
 def backup_database_action(

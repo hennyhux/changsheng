@@ -1,5 +1,5 @@
 """
-Configuration constants for Monthly Truck Lot Tracker.
+Configuration constants for Changsheng - Truck Lot Tracker.
 Centralized configuration for easier maintenance and customization.
 """
 

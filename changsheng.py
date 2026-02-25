@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Monthly Truck Lot Tracker - GUI (Tkinter + SQLite)
+Changsheng - Truck Lot Tracker (Tkinter + SQLite)
 
 GUI features:
 - Add customer
@@ -12,10 +12,10 @@ GUI features:
 - Overdue report (last 6 months)
 
 Run:
-  python monthly_gui.py
+  python changsheng.py
 
 DB:
-  monthly_lot.db (created automatically)
+  changsheng.db (created automatically)
 """
 from __future__ import annotations
 
@@ -210,7 +210,7 @@ class Truck:
 # ============================================================================
 def setup_logging():
     """Configure logging to file and console."""
-    logger = logging.getLogger("truck_lot_app")
+    logger = logging.getLogger("changsheng_app")
     
     # Remove any existing handlers to avoid duplicates
     logger.handlers.clear()
@@ -250,7 +250,7 @@ class App(tk.Tk):
         self.current_language = "en"
         self.language_selectors: list[ttk.Combobox] = []
         self.date_entry_cls = DateEntry
-        self.title("Monthly Truck Lot Tracker")
+        self.title("Changsheng - Truck Lot Tracker")
         self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self._set_startup_fullscreen()
         self._configure_ui_rendering()
@@ -783,7 +783,7 @@ class App(tk.Tk):
                     selector.set(selector_value)
 
         self._apply_menu_language(language)
-        self.title("卡车停车场管理" if language == "zh" else "Truck Lot Tracker")
+        self.title("长生 - 卡车停车场管理" if language == "zh" else "Changsheng - Truck Lot Tracker")
 
     def _apply_menu_language(self, language: str):
         """Explicitly retranslate all tk.Menu items (cannot be reached by widget-tree walk)."""
