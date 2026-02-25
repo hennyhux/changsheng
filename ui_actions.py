@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from billing_date_utils import elapsed_months_inclusive, now_iso, parse_ym, parse_ymd, today, ym
 from contract_edit_dialog import open_contract_edit_dialog
+from error_handler import safe_ui_action, safe_ui_action_returning
 from import_preview_dialog import show_import_preview
 from payment_popup import show_payment_popup
 from ui_helpers import create_date_input, set_date_input_today, make_optional_date_clear_on_blur
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("changsheng_app")
 
 
+@safe_ui_action("Backup Database")
 def backup_database_action(
     app: Any,
     db: "DatabaseService",
@@ -64,6 +66,7 @@ def backup_database_action(
     messagebox.showinfo("Backup Complete", f"Database backup saved to:\n{file_path}")
 
 
+@safe_ui_action("Restore Database")
 def restore_database_action(
     app: Any,
     db: "DatabaseService",
@@ -151,6 +154,7 @@ def restore_database_action(
         messagebox.showerror("Restore Failed", f"Could not restore database:\n{exc}")
 
 
+@safe_ui_action("Export to CSV")
 def export_customers_trucks_csv_action(
     app: Any,
     db: "DatabaseService",
@@ -246,6 +250,7 @@ def export_customers_trucks_csv_action(
     messagebox.showinfo("Export Complete", f"File saved to:\n{file_path}")
 
 
+@safe_ui_action("Import from CSV")
 def import_customers_trucks_action(
     app: Any,
     db: "DatabaseService",
@@ -547,6 +552,7 @@ def import_customers_trucks_action(
     )
 
 
+@safe_ui_action("Open Payment Form")
 def open_payment_form_for_contract_action(
     app: Any,
     db: "DatabaseService",
@@ -639,6 +645,7 @@ def open_payment_form_for_contract_action(
     )
 
 
+@safe_ui_action("Delete Contract")
 def delete_contract_action(
     app: Any,
     db: "DatabaseService",
@@ -700,6 +707,7 @@ def delete_contract_action(
     messagebox.showinfo("✓ Deleted", f"Contract {contract_id} has been deleted.")
 
 
+@safe_ui_action("Delete Customer")
 def delete_customer_action(
     app: Any,
     db: "DatabaseService",
@@ -765,6 +773,7 @@ def delete_customer_action(
     messagebox.showinfo("Deleted", f"Customer '{customer_name}' deleted.")
 
 
+@safe_ui_action("Edit Customer")
 def edit_selected_customer_action(
     app: Any,
     db: "DatabaseService",
@@ -859,6 +868,7 @@ def edit_selected_customer_action(
     name_entry.focus_set()
 
 
+@safe_ui_action("Delete Truck")
 def delete_truck_action(
     app: Any,
     db: "DatabaseService",
@@ -913,6 +923,7 @@ def delete_truck_action(
     messagebox.showinfo("✓ Deleted", f"Truck '{plate}' has been deleted.")
 
 
+@safe_ui_action("Toggle Contract Status")
 def toggle_contract_action(
     app: Any,
     db: "DatabaseService",
@@ -936,6 +947,7 @@ def toggle_contract_action(
     app.refresh_contracts()
 
 
+@safe_ui_action("Record Payment for Contract")
 def record_payment_for_selected_contract_action(
     app: Any,
     open_payment_form_for_contract_cb: Callable[[int], None],
@@ -959,6 +971,7 @@ def record_payment_for_selected_contract_action(
     open_payment_form_for_contract_cb(contract_id)
 
 
+@safe_ui_action("Record Payment for Truck")
 def record_payment_for_selected_truck_action(
     app: Any,
     db: "DatabaseService",
@@ -989,6 +1002,7 @@ def record_payment_for_selected_truck_action(
     open_payment_form_for_contract_cb(contract_id)
 
 
+@safe_ui_action("Edit Contract")
 def edit_contract_action(
     app: Any,
     db: "DatabaseService",
@@ -1108,6 +1122,7 @@ def edit_contract_action(
     )
 
 
+@safe_ui_action("Show Payment History")
 def show_contract_payment_history_action(
     app: Any,
     db: "DatabaseService",
@@ -1168,6 +1183,7 @@ def show_contract_payment_history_action(
     show_contract_payment_history_dialog_cb(app, contract_info, rows)
 
 
+@safe_ui_action("Create Contract")
 def create_contract_action(
     app: Any,
     db: "DatabaseService",
@@ -1264,6 +1280,7 @@ def create_contract_action(
     messagebox.showinfo("✓ Saved", f"Contract created for ${rate:.2f}/month starting {parsed_start}.")
 
 
+@safe_ui_action("Add Customer")
 def add_customer_action(
     app: Any,
     db: "DatabaseService",
@@ -1314,6 +1331,7 @@ def add_customer_action(
     messagebox.showinfo("✓ Saved", f"Customer '{name}' has been added.")
 
 
+@safe_ui_action("Add Truck")
 def add_truck_action(
     app: Any,
     db: "DatabaseService",
@@ -1438,6 +1456,7 @@ def add_truck_action(
         messagebox.showinfo("✓ Saved", f"Truck '{plate}' has been added.")
 
 
+@safe_ui_action("Refresh Contracts")
 def refresh_contracts_action(
     app: Any,
     db: "DatabaseService",
@@ -1486,6 +1505,7 @@ def refresh_contracts_action(
     app.refresh_overdue()
 
 
+@safe_ui_action("Refresh Customers")
 def refresh_customers_action(
     app: Any,
     db: "DatabaseService",
@@ -1534,6 +1554,7 @@ def refresh_customers_action(
     app._reload_customer_dropdowns()
 
 
+@safe_ui_action("Refresh Trucks")
 def refresh_trucks_action(
     app: Any,
     db: "DatabaseService",
@@ -1586,6 +1607,7 @@ def refresh_trucks_action(
     app._reload_truck_dropdowns()
 
 
+@safe_ui_action("Show Customer Ledger")
 def show_customer_ledger_action(
     app: Any,
     db: "DatabaseService",
@@ -1795,6 +1817,7 @@ def show_customer_ledger_action(
     ttk.Button(ftr, text="Close", command=win.destroy).pack(side="right")
 
 
+@safe_ui_action("Refresh Overdue")
 def refresh_overdue_action(
     app: Any,
     db: "DatabaseService",
@@ -1859,6 +1882,7 @@ def refresh_overdue_action(
             )
 
 
+@safe_ui_action("Refresh Statement")
 def refresh_statement_action(
     app: Any,
     db: "DatabaseService",
@@ -1926,6 +1950,7 @@ def refresh_statement_action(
     app.statement_balance_var.set(f"${outstanding:.2f}")
 
 
+@safe_ui_action("Refresh History")
 def refresh_histories_action(
     app: Any,
     ensure_history_log_exists_cb: Callable[[], None],
@@ -1945,6 +1970,7 @@ def refresh_histories_action(
     app.histories_text.configure(state="disabled")
 
 
+@safe_ui_action("Generate Invoice PDF")
 def generate_customer_invoice_pdf_for_customer_id_action(
     app: Any,
     db: "DatabaseService",
@@ -1981,6 +2007,7 @@ def generate_customer_invoice_pdf_for_customer_id_action(
         messagebox.showerror("Error", f"Could not generate PDF:\n{exc}")
 
 
+@safe_ui_action("Generate Invoice PDF")
 def generate_customer_invoice_pdf_action(
     app: Any,
     generate_customer_invoice_pdf_for_customer_id_cb: Callable[[int], None],
@@ -1996,6 +2023,7 @@ def generate_customer_invoice_pdf_action(
     generate_customer_invoice_pdf_for_customer_id_cb(customer_id)
 
 
+@safe_ui_action("Generate Invoice PDF from Billing")
 def generate_invoice_pdf_from_billing_selection_action(
     app: Any,
     db: "DatabaseService",
@@ -2033,6 +2061,7 @@ def generate_invoice_pdf_from_billing_selection_action(
     generate_customer_invoice_pdf_for_customer_id_cb(customer_id)
 
 
+@safe_ui_action("Refresh Invoices")
 def refresh_invoices_action(
     app: Any,
     db: "DatabaseService",
@@ -2142,6 +2171,7 @@ def refresh_invoices_action(
         app.invoice_tree.focus(selected_child_iid)
 
 
+@safe_ui_action("Reset Contract Payments")
 def reset_contract_payments_action(
     app: Any,
     db: "DatabaseService",
@@ -2203,6 +2233,7 @@ def reset_contract_payments_action(
     messagebox.showinfo("Done", f"All {payment_count} payment(s) for Contract {contract_id} have been removed.")
 
 
+@safe_ui_action("Open Payment Form")
 def open_payment_form_window_action(
     app: Any,
     open_payment_form_for_contract_cb: Callable[[int, str | None, date | None], None],
@@ -2237,6 +2268,7 @@ def open_payment_form_window_action(
         messagebox.showerror("Error", f"Failed to open payment form: {exc}")
 
 
+@safe_ui_action_returning("Get or Create Anchor Invoice", return_on_error=0)
 def get_or_create_anchor_invoice_action(
     db: "DatabaseService",
     contract_id: int,
@@ -2251,6 +2283,7 @@ def get_or_create_anchor_invoice_action(
     )
 
 
+@safe_ui_action_returning("Get Contract Outstanding", return_on_error=0.0)
 def get_contract_outstanding_as_of_action(
     db: "DatabaseService",
     contract_id: int,
@@ -2277,12 +2310,14 @@ def get_contract_outstanding_as_of_action(
     return expected_amount - paid_total
 
 
+@safe_ui_action("Clear Invoice Search")
 def clear_invoice_customer_search_action(app: Any) -> None:
     if hasattr(app, "invoice_customer_search"):
         app.invoice_customer_search.delete(0, tk.END)
     app.refresh_invoices()
 
 
+@safe_ui_action("Sync Customer to Forms")
 def sync_selected_customer_to_forms_action(
     app: Any,
     set_selected_customer_cb: Callable[[int], None],
@@ -2297,6 +2332,7 @@ def sync_selected_customer_to_forms_action(
     set_selected_customer_cb(customer_id)
 
 
+@safe_ui_action_returning("Check Unsaved Data", return_on_error=False)
 def tab_has_unsaved_data_action(
     app: Any,
     tab_str: str,
@@ -2334,6 +2370,7 @@ def tab_has_unsaved_data_action(
     return False
 
 
+@safe_ui_action("Handle Tab Change")
 def on_tab_changed_action(
     app: Any,
     _event: Any,
