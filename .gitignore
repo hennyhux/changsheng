@@ -5,3 +5,5 @@
 /exceptions.log
 /monthly_lot.db
 /.idea
+/.venv/
+/build/
