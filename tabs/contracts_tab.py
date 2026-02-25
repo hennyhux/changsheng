@@ -1,6 +1,9 @@
 import tkinter as tk
 from tkinter import ttk
+
 from billing_date_utils import today
+from ui_helpers import add_placeholder, create_date_input, make_optional_date_clear_on_blur
+
 
 def build_contracts_tab(app, frame):
     frame.columnconfigure(0, weight=1)
@@ -53,7 +56,7 @@ def build_contracts_tab(app, frame):
 
     form = ttk.LabelFrame(frame, text="Create Contract")
     form.grid(row=3, column=0, sticky="ew", padx=10, pady=10)
-    app._contract_form = form  # Store reference for error display
+    app._contract_form = form
     for i in range(12):
         form.columnconfigure(i, weight=1 if i in (11,) else 0)
 
@@ -83,21 +86,31 @@ def build_contracts_tab(app, frame):
     ttk.Label(form, text="Rate ($/mo)*").grid(row=1, column=3, sticky="w", padx=6, pady=6)
     app.contract_rate = ttk.Entry(form, width=12)
     app.contract_rate.grid(row=1, column=4, sticky="w", padx=6, pady=6)
-    app._add_placeholder(app.contract_rate, "0.00")
+    add_placeholder(app.contract_rate, "0.00")
     app.contract_rate.bind("<Return>", lambda e: app.create_contract())
 
     ttk.Label(form, text="Start YYYY-MM-DD").grid(row=1, column=5, sticky="w", padx=6, pady=6)
     start_wrap = ttk.Frame(form)
     start_wrap.grid(row=1, column=6, sticky="w", padx=6, pady=6)
-    app.contract_start = app._create_date_input(start_wrap, width=12, default_iso=today().isoformat())
+    app.contract_start = create_date_input(
+        start_wrap,
+        width=12,
+        default_iso=today().isoformat(),
+        date_entry_cls=getattr(app, "date_entry_cls", None),
+    )
     app.contract_start.pack(side="left")
 
     ttk.Label(form, text="End YYYY-MM-DD (optional)").grid(row=1, column=7, sticky="w", padx=6, pady=6)
     end_wrap = ttk.Frame(form)
     end_wrap.grid(row=1, column=8, sticky="w", padx=6, pady=6)
-    app.contract_end = app._create_date_input(end_wrap, width=12, default_iso=None)
+    app.contract_end = create_date_input(
+        end_wrap,
+        width=12,
+        default_iso=None,
+        date_entry_cls=getattr(app, "date_entry_cls", None),
+    )
     app.contract_end.pack(side="left")
-    app._make_optional_date_clear_on_blur(app.contract_end)
+    make_optional_date_clear_on_blur(app.contract_end, date_entry_cls=getattr(app, "date_entry_cls", None))
 
     ttk.Label(form, text="Notes").grid(row=2, column=0, sticky="w", padx=6, pady=6)
     app.contract_notes = ttk.Entry(form, width=80)

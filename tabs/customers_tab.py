@@ -1,5 +1,7 @@
-import tkinter as tk
 from tkinter import ttk
+
+from ui_helpers import add_placeholder
+
 
 def build_customers_tab(app, frame):
     frame.columnconfigure(0, weight=1)
@@ -24,7 +26,6 @@ def build_customers_tab(app, frame):
     ttk.Button(data_frame, text="Import CSV", command=app.import_customers_trucks).pack(side="left", padx=2)
     ttk.Button(top, text="Generate PDF Invoice", command=app.generate_customer_invoice_pdf).grid(row=0, column=8, padx=6)
 
-    # Table
     cols = ("id", "name", "phone", "company", "notes", "outstanding", "trucks")
     app.customer_tree = ttk.Treeview(frame, columns=cols, show="headings", height=18)
     customer_headings = {
@@ -53,35 +54,34 @@ def build_customers_tab(app, frame):
     app.customer_tree.bind("<<TreeviewSelect>>", app._on_customer_tree_select)
     app.customer_tree.bind("<Double-1>", lambda _e: app.edit_selected_customer())
 
-    # Add form
     form = ttk.LabelFrame(frame, text="Add Customer", padding="10")
     form.grid(row=2, column=0, sticky="ew", padx=10, pady=10)
-    app._customer_form = form  # Store reference for error display
+    app._customer_form = form
     for i in range(8):
         form.columnconfigure(i, weight=1 if i == 7 else 0)
 
     ttk.Label(form, text="Name*", font=("", 9, "bold")).grid(row=0, column=0, sticky="w", padx=6, pady=8)
     app.c_name = ttk.Entry(form, width=25)
     app.c_name.grid(row=0, column=1, sticky="w", padx=6, pady=8)
-    app._add_placeholder(app.c_name, "Enter customer name...")
+    add_placeholder(app.c_name, "Enter customer name...")
     app.c_name.bind("<Return>", lambda e: app.add_customer())
 
     ttk.Label(form, text="Phone").grid(row=0, column=2, sticky="w", padx=6, pady=8)
     app.c_phone = ttk.Entry(form, width=18)
     app.c_phone.grid(row=0, column=3, sticky="w", padx=6, pady=8)
-    app._add_placeholder(app.c_phone, "Phone number...")
+    add_placeholder(app.c_phone, "Phone number...")
     app.c_phone.bind("<Return>", lambda e: app.add_customer())
 
     ttk.Label(form, text="Company").grid(row=0, column=4, sticky="w", padx=6, pady=8)
     app.c_company = ttk.Entry(form, width=22)
     app.c_company.grid(row=0, column=5, sticky="w", padx=6, pady=8)
-    app._add_placeholder(app.c_company, "Company name...")
+    add_placeholder(app.c_company, "Company name...")
     app.c_company.bind("<Return>", lambda e: app.add_customer())
 
     ttk.Label(form, text="Notes").grid(row=1, column=0, sticky="w", padx=6, pady=8)
     app.c_notes = ttk.Entry(form, width=80)
     app.c_notes.grid(row=1, column=1, columnspan=5, sticky="ew", padx=6, pady=8)
-    app._add_placeholder(app.c_notes, "Additional notes...")
+    add_placeholder(app.c_notes, "Additional notes...")
     app.c_notes.bind("<Return>", lambda e: app.add_customer())
 
     btn_frame = ttk.Frame(form)

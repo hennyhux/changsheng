@@ -1,7 +1,10 @@
 import tkinter as tk
 from tkinter import ttk
+
 from billing_date_utils import today
 from config import FONTS, TAG_COLORS
+from ui_helpers import create_date_input
+
 
 def build_invoices_tab(app, frame):
     frame.columnconfigure(0, weight=1)
@@ -13,7 +16,12 @@ def build_invoices_tab(app, frame):
     controls.columnconfigure(12, weight=1)
 
     ttk.Label(controls, text="As-of Date (YYYY-MM-DD):").grid(row=0, column=0, sticky="w", padx=6, pady=6)
-    app.invoice_date = app._create_date_input(controls, width=12, default_iso=today().isoformat())
+    app.invoice_date = create_date_input(
+        controls,
+        width=12,
+        default_iso=today().isoformat(),
+        date_entry_cls=getattr(app, "date_entry_cls", None),
+    )
     app.invoice_date.grid(row=0, column=1, sticky="w", padx=6, pady=6)
 
     ttk.Button(controls, text="Recalculate", command=app.refresh_invoices).grid(row=0, column=3, padx=6)
@@ -28,7 +36,6 @@ def build_invoices_tab(app, frame):
     ttk.Label(controls, text="Total Outstanding:").grid(row=0, column=9, sticky="e", padx=(14, 4), pady=6)
     ttk.Label(controls, textvariable=app.invoice_total_balance_var, foreground="#b00020", font=FONTS["heading"]).grid(row=0, column=10, sticky="w", padx=4, pady=6)
 
-    # ── Action bar (row=1) ─────────────────────────────────────────────────
     action_bar = ttk.Frame(frame, style="BillingAction.TFrame", padding="8")
     action_bar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 6))
     action_bar.columnconfigure(4, weight=1)

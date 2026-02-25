@@ -12,6 +12,7 @@ from billing_date_utils import elapsed_months_inclusive, now_iso, parse_ym, pars
 from contract_edit_dialog import open_contract_edit_dialog
 from import_preview_dialog import show_import_preview
 from payment_popup import show_payment_popup
+from ui_helpers import create_date_input, set_date_input_today, make_optional_date_clear_on_blur
 from validation import (
     normalize_whitespace,
     optional_phone,
@@ -625,8 +626,16 @@ def open_payment_form_for_contract_action(
         balance,
         today().isoformat(),
         on_submit,
-        date_input_factory=getattr(app, "_create_date_input", None),
-        set_date_today_cb=getattr(app, "_set_date_input_today", None),
+        date_input_factory=lambda parent, width, default_iso=None: create_date_input(
+            parent,
+            width,
+            default_iso=default_iso,
+            date_entry_cls=getattr(app, "date_entry_cls", None),
+        ),
+        set_date_today_cb=lambda widget: set_date_input_today(
+            widget,
+            date_entry_cls=getattr(app, "date_entry_cls", None),
+        ),
     )
 
 
@@ -1084,10 +1093,18 @@ def edit_contract_action(
         row=row,
         customer_values=customer_values,
         truck_values=truck_values,
-        date_input_factory=app._create_date_input,
+        date_input_factory=lambda parent, width, default_iso=None: create_date_input(
+            parent,
+            width,
+            default_iso=default_iso,
+            date_entry_cls=getattr(app, "date_entry_cls", None),
+        ),
         make_searchable_combo=app._make_searchable_combo,
         on_save=_save_contract,
-        optional_date_clear_on_blur_cb=getattr(app, "_make_optional_date_clear_on_blur", None),
+        optional_date_clear_on_blur_cb=lambda widget: make_optional_date_clear_on_blur(
+            widget,
+            date_entry_cls=getattr(app, "date_entry_cls", None),
+        ),
     )
 
 

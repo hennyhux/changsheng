@@ -137,6 +137,17 @@ from tabs.customers_tab import build_customers_tab
 from tabs.trucks_tab import build_trucks_tab
 from tabs.contracts_tab import build_contracts_tab
 from tabs.invoices_tab import build_invoices_tab
+from tabs.dashboard_tab import build_dashboard_tab
+from tabs.statement_tab import build_statement_tab
+from tabs.overdue_tab import build_overdue_tab
+from tabs.histories_tab import build_histories_tab
+from tabs.billing_tab import build_billing_tab
+from ui_helpers import (
+    add_placeholder,
+    get_entry_value,
+    show_inline_error,
+    clear_inline_errors,
+)
 
 def log_action(event_type: str, details: str):
     """Append immutable action to history log file."""
@@ -238,6 +249,7 @@ class App(tk.Tk):
         super().__init__()
         self.current_language = "en"
         self.language_selectors: list[ttk.Combobox] = []
+        self.date_entry_cls = DateEntry
         self.title("Monthly Truck Lot Tracker")
         self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self._set_startup_fullscreen()
@@ -287,12 +299,12 @@ class App(tk.Tk):
         nb.add(self.tab_billing, text="💵 Billing")
         nb.add(self.tab_histories, text="🕑 Histories")
 
-        self._build_dashboard_tab()
+        build_dashboard_tab(self, self.tab_dashboard)
         build_customers_tab(self, self.tab_customers)
         build_trucks_tab(self, self.tab_trucks)
         build_contracts_tab(self, self.tab_contracts)
-        self._build_billing_tab()
-        self._build_histories_tab()
+        build_billing_tab(self, self.tab_billing)
+        build_histories_tab(self, self.tab_histories)
         self._setup_right_click_menus()
 
         # Auto-refresh histories when its tab is selected
@@ -365,119 +377,6 @@ class App(tk.Tk):
             menu.tk_popup(event.x_root, event.y_root)
         finally:
             menu.grab_release()
-
-    def _build_billing_tab(self):
-        frame = self.tab_billing
-        frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(0, weight=1)
-
-        sub = ttk.Notebook(frame, style="BillingTabs.TNotebook")
-        sub.grid(row=0, column=0, sticky="nsew")
-        self.billing_notebook = sub
-
-        self.sub_invoices = ttk.Frame(sub)
-        self.sub_statement = ttk.Frame(sub)
-        self.sub_overdue = ttk.Frame(sub)
-
-        sub.add(self.sub_invoices, text="🧾 Invoices & Payments")
-        sub.add(self.sub_statement, text="📊 Monthly Statement")
-        sub.add(self.sub_overdue, text="⏰ Overdue")
-
-        build_invoices_tab(self, self.sub_invoices)
-        self._build_statement_tab()
-        self._build_overdue_tab()
-
-        sub.bind("<<NotebookTabChanged>>", self._on_billing_tab_changed)
-
-    def _build_dashboard_tab(self):
-        frame = self.tab_dashboard
-        frame.columnconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=1)
-        frame.rowconfigure(0, weight=0)
-        frame.rowconfigure(1, weight=1)
-        frame.rowconfigure(2, weight=1)
-
-        search_bar = ttk.LabelFrame(frame, text="Global Search")
-        search_bar.grid(row=0, column=0, columnspan=2, sticky="ew", padx=18, pady=(14, 6))
-        search_bar.columnconfigure(3, weight=1)
-
-        self.dashboard_search_fields: dict[str, str] = {
-            "All": "all",
-            "Plate": "plate",
-            "Name": "name",
-            "Company": "company",
-            "Phone": "phone",
-        }
-        self.dashboard_search_field = ttk.Combobox(
-            search_bar,
-            values=list(self.dashboard_search_fields.keys()),
-            width=14,
-            state="readonly",
-        )
-        self.dashboard_search_field.grid(row=0, column=0, padx=(8, 6), pady=8, sticky="w")
-        self.dashboard_search_field.set("All")
-        self.dashboard_search_field.bind("<<ComboboxSelected>>", lambda _e: self._schedule_dashboard_global_search())
-
-        self.dashboard_search_entry = ttk.Entry(search_bar, width=40)
-        self.dashboard_search_entry.grid(row=0, column=1, padx=6, pady=8, sticky="w")
-        self.dashboard_search_entry.bind("<Return>", lambda _e: self._run_dashboard_global_search())
-        self.dashboard_search_entry.bind("<KeyRelease>", lambda _e: self._schedule_dashboard_global_search())
-
-        ttk.Button(search_bar, text="Search", command=self._run_dashboard_global_search).grid(row=0, column=2, padx=6, pady=8)
-        ttk.Button(search_bar, text="Clear", command=self._clear_dashboard_global_search).grid(row=0, column=3, padx=(0, 8), pady=8, sticky="w")
-
-        results_wrap = ttk.Frame(search_bar)
-        results_wrap.grid(row=1, column=0, columnspan=4, sticky="nsew", padx=8, pady=(0, 8))
-        results_wrap.columnconfigure(0, weight=1)
-        results_wrap.rowconfigure(0, weight=1)
-
-        self.dashboard_search_tree = ttk.Treeview(
-            results_wrap,
-            columns=("type", "match", "detail"),
-            show="headings",
-            height=5,
-        )
-        self.dashboard_search_tree.heading("type", text="Type", anchor="center")
-        self.dashboard_search_tree.heading("match", text="Match", anchor="center")
-        self.dashboard_search_tree.heading("detail", text="Detail", anchor="center")
-        self.dashboard_search_tree.column("type", width=120, anchor="center")
-        self.dashboard_search_tree.column("match", width=260, anchor="center")
-        self.dashboard_search_tree.column("detail", width=560, anchor="center")
-        self.dashboard_search_tree.grid(row=0, column=0, sticky="nsew")
-        search_vsb = ttk.Scrollbar(results_wrap, orient="vertical", command=self.dashboard_search_tree.yview)
-        self.dashboard_search_tree.configure(yscrollcommand=search_vsb.set)
-        search_vsb.grid(row=0, column=1, sticky="ns")
-        self.dashboard_search_tree.bind("<Double-1>", self._open_dashboard_search_selection)
-        self.dashboard_search_tree.bind("<Return>", self._open_dashboard_search_selection)
-
-        self._dashboard_search_result_map: dict[str, dict[str, str | int]] = {}
-        self._dashboard_search_after_id: str | None = None
-
-        self.dash_active_contracts_var = tk.StringVar(value="0")
-        self.dash_expected_month_var = tk.StringVar(value="$0.00")
-        self.dash_total_outstanding_var = tk.StringVar(value="$0.00")
-        self.dash_overdue_30_var = tk.StringVar(value="0")
-
-        def add_card(parent: tk.Widget, row: int, col: int, title: str, value_var: tk.StringVar):
-            card = ttk.LabelFrame(parent, text=title, padding=28)
-            card.grid(row=row, column=col, sticky="nsew", padx=18, pady=18)
-            card.columnconfigure(0, weight=1)
-            card.rowconfigure(0, weight=1)
-            value_label = ttk.Label(
-                card,
-                textvariable=value_var,
-                anchor="center",
-                justify="center",
-                font=FONTS["dashboard_title"],
-            )
-            value_label.grid(row=0, column=0, sticky="nsew")
-            return value_label
-
-        add_card(frame, 1, 0, "Total Active Contracts", self.dash_active_contracts_var)
-        add_card(frame, 1, 1, "Expected This Month", self.dash_expected_month_var)
-        add_card(frame, 2, 0, "Total Outstanding", self.dash_total_outstanding_var)
-        overdue_30_label = add_card(frame, 2, 1, "Overdue 30+ Days", self.dash_overdue_30_var)
-        overdue_30_label.bind("<Double-1>", lambda _e: self._open_overdue_tab_from_dashboard())
 
     def _clear_dashboard_global_search(self):
         if self._dashboard_search_after_id is not None:
@@ -806,113 +705,6 @@ class App(tk.Tk):
         combo.bind("<KeyRelease>", _on_key)
         combo.bind("<FocusOut>", _on_focus_out)
 
-    def _create_date_input(self, parent: tk.Widget, width: int, default_iso: str | None = None):
-        if DateEntry is not None:
-            picker = DateEntry(parent, width=width, date_pattern="yyyy-mm-dd")
-            if default_iso:
-                parsed = parse_ymd(default_iso)
-                if parsed:
-                    picker.set_date(parsed)
-            else:
-                picker.delete(0, tk.END)
-            return picker
-
-        fallback = ttk.Entry(parent, width=width)
-        if default_iso:
-            fallback.insert(0, default_iso)
-        return fallback
-
-
-    def _set_date_input_today(self, widget: tk.Widget):
-        today_iso = today().isoformat()
-        if DateEntry is not None and isinstance(widget, DateEntry):
-            widget.set_date(today_iso)
-            return
-        try:
-            widget.delete(0, tk.END)
-            widget.insert(0, today_iso)
-        except Exception:
-            pass
-
-    def _open_calendar_for_widget(self, widget: tk.Widget):
-        """Open a calendar dropdown for the given date widget.
-
-        If `DateEntry` is available use its `drop_down()` method. Otherwise try
-        to open a small `tkcalendar.Calendar` popup (if installed). If neither
-        is available, prompt the user to install `tkcalendar`.
-        """
-        try:
-            if DateEntry is not None and isinstance(widget, DateEntry):
-                try:
-                    widget.drop_down()
-                    return
-                except Exception:
-                    # Fall through to try a calendar popup
-                    pass
-
-            try:
-                import tkcalendar
-                Calendar = tkcalendar.Calendar
-            except Exception:
-                messagebox.showinfo("Date Picker", "Install the 'tkcalendar' package to enable a calendar picker.")
-                return
-
-            top = tk.Toplevel(self)
-            top.transient(self)
-            top.grab_set()
-            cal = Calendar(top, selectmode="day", date_pattern="yyyy-mm-dd")
-            cal.pack(padx=8, pady=8)
-
-            def _choose():
-                sel = cal.get_date()
-                try:
-                    widget.delete(0, tk.END)
-                    widget.insert(0, sel)
-                except Exception:
-                    pass
-                top.destroy()
-
-            btn = ttk.Button(top, text="OK", command=_choose)
-            btn.pack(pady=(0, 8))
-        except Exception:
-            # Non-fatal — silently ignore failures to open calendar
-            return
-
-    def _make_optional_date_clear_on_blur(self, widget: tk.Widget):
-        def _on_focus_in(_event=None):
-            try:
-                widget._optional_prev_value = normalize_whitespace(widget.get())
-            except Exception:
-                widget._optional_prev_value = ""
-            widget._optional_user_set = False
-
-        def _mark_user_set(_event=None):
-            widget._optional_user_set = True
-
-        def _on_focus_out(_event=None):
-            prev = normalize_whitespace(getattr(widget, "_optional_prev_value", ""))
-            try:
-                curr = normalize_whitespace(widget.get())
-            except Exception:
-                curr = ""
-
-            if prev:
-                return
-            if getattr(widget, "_optional_user_set", False):
-                return
-
-            if curr == today().isoformat() or curr == prev:
-                try:
-                    widget.delete(0, tk.END)
-                except Exception:
-                    pass
-
-        widget.bind("<FocusIn>", _on_focus_in, add="+")
-        widget.bind("<FocusOut>", _on_focus_out, add="+")
-        widget.bind("<KeyRelease>", _mark_user_set, add="+")
-        if DateEntry is not None and isinstance(widget, DateEntry):
-            widget.bind("<<DateEntrySelected>>", _mark_user_set, add="+")
-
     def _language_maps(self):
         """Return language mapping dictionaries (imported from language_map.py)."""
         return EN_TO_ZH, ZH_TO_EN
@@ -1051,58 +843,6 @@ class App(tk.Tk):
         selector.bind("<<ComboboxSelected>>", self._on_language_changed)
         self.language_selectors.append(selector)
         return selector
-
-    def _add_placeholder(self, entry: ttk.Entry, placeholder_text: str):
-        """Add placeholder text to an Entry widget that disappears when focused."""
-        entry._placeholder_text = placeholder_text
-        entry._has_placeholder = True
-        
-        def on_focus_in(event):
-            if hasattr(entry, '_has_placeholder') and entry._has_placeholder:
-                entry.delete(0, tk.END)
-                entry.configure(foreground='black')
-                entry._has_placeholder = False
-        
-        def on_focus_out(event):
-            if not entry.get():
-                entry.insert(0, entry._placeholder_text)
-                entry.configure(foreground='gray')
-                entry._has_placeholder = True
-        
-        entry.insert(0, placeholder_text)
-        entry.configure(foreground='gray')
-        entry.bind('<FocusIn>', on_focus_in)
-        entry.bind('<FocusOut>', on_focus_out)
-    
-    def _get_entry_value(self, entry: ttk.Entry) -> str:
-        """Get value from entry, handling placeholder text correctly."""
-        if hasattr(entry, '_has_placeholder') and entry._has_placeholder:
-            return ''
-        return entry.get()
-    
-    def _show_inline_error(self, parent: tk.Widget, message: str, row: int, column: int, columnspan: int = 1) -> tk.Label:
-        """Show an inline error message in a red box below a field."""
-        error_label = tk.Label(
-            parent,
-            text="⚠️ " + message,
-            background="#ffebee",
-            foreground="#b00020",
-            font=("Segoe UI", 11, "bold"),
-            relief="solid",
-            borderwidth=1,
-            padx=8,
-            pady=4
-        )
-        error_label.grid(row=row, column=column, columnspan=columnspan, sticky="ew", padx=6, pady=2)
-        # Auto-hide after 5 seconds
-        parent.after(5000, lambda: error_label.grid_forget() if error_label.winfo_exists() else None)
-        return error_label
-    
-    def _clear_inline_errors(self, parent: tk.Widget):
-        """Clear all inline error labels from a parent widget."""
-        for child in parent.winfo_children():
-            if isinstance(child, tk.Label) and child.cget("background") == "#ffebee":
-                child.grid_forget()
 
     # ---------------------------
     # Customers tab
@@ -1285,11 +1025,11 @@ class App(tk.Tk):
         add_customer_action(
             app=self,
             db=self.db,
-            get_entry_value_cb=self._get_entry_value,
-            clear_inline_errors_cb=self._clear_inline_errors,
-            show_inline_error_cb=self._show_inline_error,
+            get_entry_value_cb=get_entry_value,
+            clear_inline_errors_cb=clear_inline_errors,
+            show_inline_error_cb=show_inline_error,
             show_invalid_cb=self._show_invalid,
-            add_placeholder_cb=self._add_placeholder,
+            add_placeholder_cb=add_placeholder,
             log_action_cb=log_action,
         )
 
@@ -1339,12 +1079,12 @@ class App(tk.Tk):
         add_truck_action(
             app=self,
             db=self.db,
-            get_entry_value_cb=self._get_entry_value,
+            get_entry_value_cb=get_entry_value,
             get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
-            clear_inline_errors_cb=self._clear_inline_errors,
-            show_inline_error_cb=self._show_inline_error,
+            clear_inline_errors_cb=clear_inline_errors,
+            show_inline_error_cb=show_inline_error,
             show_invalid_cb=self._show_invalid,
-            add_placeholder_cb=self._add_placeholder,
+            add_placeholder_cb=add_placeholder,
             log_action_cb=log_action,
         )
 
@@ -1378,9 +1118,9 @@ class App(tk.Tk):
             db=self.db,
             get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
             get_selected_truck_id_cb=self._get_selected_truck_id_from_combo,
-            get_entry_value_cb=self._get_entry_value,
-            clear_inline_errors_cb=self._clear_inline_errors,
-            show_inline_error_cb=self._show_inline_error,
+            get_entry_value_cb=get_entry_value,
+            clear_inline_errors_cb=clear_inline_errors,
+            show_inline_error_cb=show_inline_error,
             show_invalid_cb=self._show_invalid,
             log_action_cb=log_action,
         )
@@ -1742,51 +1482,6 @@ class App(tk.Tk):
     # ---------------------------
     # Overdue tab
     # ---------------------------
-    def _build_overdue_tab(self):
-        frame = self.sub_overdue
-        frame.columnconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=0)
-        frame.rowconfigure(1, weight=1)
-
-        top = ttk.Frame(frame)
-        top.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        ttk.Button(top, text="Refresh", command=self.refresh_overdue).pack(side="left")
-        ttk.Label(top, text="As-of Date (YYYY-MM-DD):").pack(side="left", padx=(12, 4))
-        self.overdue_as_of = self._create_date_input(top, width=12, default_iso=today().isoformat())
-        self.overdue_as_of.pack(side="left")
-        ttk.Label(top, text="Search:").pack(side="left", padx=(12, 4))
-        self.overdue_search = ttk.Entry(top, width=24)
-        self.overdue_search.pack(side="left")
-        self.overdue_search.bind("<Return>", lambda _e: self.refresh_overdue())
-        self.overdue_search.bind("<KeyRelease>", self._on_overdue_search_keyrelease)
-        ttk.Button(top, text="Clear", command=self._clear_overdue_search).pack(side="left", padx=6)
-        ttk.Label(top, text="Shows contracts with outstanding balance as of the selected date.").pack(side="left", padx=10)
-
-        cols = ("month", "date", "invoice_id", "customer", "scope", "amount", "paid", "balance")
-        self.overdue_tree = ttk.Treeview(frame, columns=cols, show="headings", height=22)
-        overdue_headings = {"month": "Month", "date": "Date", "invoice_id": "Contract ID", "customer": "Customer", "scope": "Scope", "amount": "Amount", "paid": "Paid", "balance": "Balance"}
-        for c in cols:
-            self.overdue_tree.heading(c, text=overdue_headings[c], anchor="center")
-            width = 150
-            if c == "customer":
-                width = 340
-            if c == "scope":
-                width = 320
-            if c == "date":
-                width = 140
-            if c == "invoice_id":
-                width = 160
-            if c in ("amount", "paid", "balance"):
-                width = 160
-            self.overdue_tree.column(c, width=width, anchor="center")
-        self.overdue_tree.column("customer", anchor="center")
-        self.overdue_tree.column("scope", anchor="center")
-        self.overdue_tree.grid(row=1, column=0, sticky="nsew", padx=10)
-        overdue_vsb = ttk.Scrollbar(frame, orient="vertical", command=self.overdue_tree.yview)
-        self.overdue_tree.configure(yscrollcommand=overdue_vsb.set)
-        overdue_vsb.grid(row=1, column=1, sticky="ns", padx=(0, 10))
-        self._init_tree_striping(self.overdue_tree)
-
     def _on_overdue_search_keyrelease(self, _event=None):
         self.refresh_overdue()
 
@@ -1837,37 +1532,6 @@ class App(tk.Tk):
         elif selected == str(self.sub_invoices):
             self._sync_search_boxes_from_truck_search()
             self.refresh_invoices()
-
-    def _build_statement_tab(self):
-        frame = self.sub_statement
-        frame.columnconfigure(0, weight=1)
-
-        controls = ttk.Frame(frame)
-        controls.grid(row=0, column=0, sticky="ew", padx=12, pady=12)
-        controls.columnconfigure(6, weight=1)
-
-        ttk.Label(controls, text="Month (YYYY-MM):").grid(row=0, column=0, sticky="w", padx=4)
-        self.statement_month = ttk.Entry(controls, width=10)
-        self.statement_month.insert(0, ym(today()))
-        self.statement_month.grid(row=0, column=1, sticky="w", padx=4)
-
-        ttk.Button(controls, text="Refresh Statement", command=self.refresh_statement).grid(row=0, column=2, padx=8)
-
-        summary = ttk.LabelFrame(frame, text="Monthly Totals")
-        summary.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 12))
-
-        self.statement_expected_var = tk.StringVar(value="$0.00")
-        self.statement_paid_var = tk.StringVar(value="$0.00")
-        self.statement_balance_var = tk.StringVar(value="$0.00")
-
-        ttk.Label(summary, text="Expected for month:").grid(row=0, column=0, sticky="w", padx=8, pady=8)
-        ttk.Label(summary, textvariable=self.statement_expected_var).grid(row=0, column=1, sticky="w", padx=8, pady=8)
-
-        ttk.Label(summary, text="Paid toward month invoices:").grid(row=1, column=0, sticky="w", padx=8, pady=8)
-        ttk.Label(summary, textvariable=self.statement_paid_var).grid(row=1, column=1, sticky="w", padx=8, pady=8)
-
-        ttk.Label(summary, text="Outstanding:").grid(row=2, column=0, sticky="w", padx=8, pady=8)
-        ttk.Label(summary, textvariable=self.statement_balance_var).grid(row=2, column=1, sticky="w", padx=8, pady=8)
 
     def refresh_overdue(self):
         search_text = ""
@@ -1992,22 +1656,6 @@ class App(tk.Tk):
     # ---------------------------
     # Histories tab
     # ---------------------------
-    def _build_histories_tab(self):
-        frame = self.tab_histories
-        frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(1, weight=1)
-        top_bar = ttk.Frame(frame)
-        top_bar.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 0))
-        ttk.Label(top_bar, text="Blackbox Log (all actions and events)", font=("Segoe UI", 14, "bold")).pack(side="left")
-        ttk.Button(top_bar, text="Refresh", command=self.refresh_histories).pack(side="right")
-        self.histories_text = tk.Text(frame, wrap="none", state="disabled", font=("Consolas", 10))
-        self.histories_text.grid(row=1, column=0, sticky="nsew", padx=(10, 0), pady=10)
-        scrollbar_v = ttk.Scrollbar(frame, orient="vertical", command=self.histories_text.yview)
-        scrollbar_h = ttk.Scrollbar(frame, orient="horizontal", command=self.histories_text.xview)
-        self.histories_text.configure(yscrollcommand=scrollbar_v.set, xscrollcommand=scrollbar_h.set)
-        scrollbar_v.grid(row=1, column=1, sticky="ns", pady=10)
-        scrollbar_h.grid(row=2, column=0, sticky="ew", padx=(10, 0))
-
     def refresh_histories(self):
         refresh_histories_action(
             app=self,
@@ -2045,7 +1693,7 @@ class App(tk.Tk):
         return tab_has_unsaved_data_action(
             app=self,
             tab_str=tab_str,
-            get_entry_value_cb=self._get_entry_value,
+            get_entry_value_cb=get_entry_value,
         )
 
     def _on_tab_changed(self, event):

@@ -1,12 +1,8 @@
 import tkinter as tk
 from tkinter import ttk
-import importlib
 
-try:
-    _DateEntryBase = importlib.import_module("tkcalendar").DateEntry
-    DateEntry = _DateEntryBase
-except Exception:
-    DateEntry = None
+from ui_helpers import add_placeholder, create_date_input, open_calendar_for_widget
+
 
 def build_trucks_tab(app, frame):
     frame.columnconfigure(0, weight=1)
@@ -40,7 +36,6 @@ def build_trucks_tab(app, frame):
     app.truck_tree.column("plate", anchor="center")
     app.truck_tree.column("make", anchor="center")
     app.truck_tree.column("model", anchor="center")
-    # Allow the customer column to stretch and use remaining horizontal space
     app.truck_tree.column("customer", anchor="center", stretch=True)
     app.truck_tree.column("outstanding", anchor="center")
     app.truck_tree.grid(row=1, column=0, sticky="nsew", padx=10)
@@ -52,7 +47,7 @@ def build_trucks_tab(app, frame):
 
     form = ttk.LabelFrame(frame, text="Add Truck", padding="14")
     form.grid(row=2, column=0, sticky="ew", padx=10, pady=(12, 14))
-    app._truck_form = form  # Store reference for error display
+    app._truck_form = form
     for i in range(13):
         form.columnconfigure(i, weight=1 if i in (3, 7, 11) else 0)
     form.rowconfigure(0, minsize=44)
@@ -61,52 +56,84 @@ def build_trucks_tab(app, frame):
     ttk.Label(form, text="Plate*", font=("", 9, "bold")).grid(row=0, column=0, sticky="w", padx=6, pady=8)
     app.t_plate = ttk.Entry(form, width=16)
     app.t_plate.grid(row=0, column=1, sticky="w", padx=6, pady=8)
-    app._add_placeholder(app.t_plate, "License plate...")
+    add_placeholder(app.t_plate, "License plate...")
     app.t_plate.bind("<Return>", lambda e: app.add_truck())
 
     ttk.Label(form, text="State").grid(row=0, column=2, sticky="w", padx=6, pady=8)
     app.t_state = ttk.Entry(form, width=8)
     app.t_state.grid(row=0, column=3, sticky="w", padx=6, pady=8)
-    app._add_placeholder(app.t_state, "CA")
+    add_placeholder(app.t_state, "CA")
     app.t_state.bind("<Return>", lambda e: app.add_truck())
 
     ttk.Label(form, text="Make").grid(row=0, column=4, sticky="w", padx=6, pady=8)
     app.t_make = ttk.Entry(form, width=14)
     app.t_make.grid(row=0, column=5, sticky="w", padx=6, pady=8)
-    app._add_placeholder(app.t_make, "Ford")
+    add_placeholder(app.t_make, "Ford")
     app.t_make.bind("<Return>", lambda e: app.add_truck())
 
     ttk.Label(form, text="Model").grid(row=0, column=6, sticky="w", padx=6, pady=8)
     app.t_model = ttk.Entry(form, width=14)
     app.t_model.grid(row=0, column=7, sticky="w", padx=6, pady=8)
-    app._add_placeholder(app.t_model, "F-150")
+    add_placeholder(app.t_model, "F-150")
     app.t_model.bind("<Return>", lambda e: app.add_truck())
 
     ttk.Label(form, text="Contract Start").grid(row=0, column=8, sticky="w", padx=6, pady=8)
     start_wrap = ttk.Frame(form)
     start_wrap.grid(row=0, column=9, sticky="w", padx=6, pady=8)
-    app.t_contract_start = app._create_date_input(start_wrap, width=12, default_iso=None)
+    app.t_contract_start = create_date_input(
+        start_wrap,
+        width=12,
+        default_iso=None,
+        date_entry_cls=getattr(app, "date_entry_cls", None),
+    )
     app.t_contract_start.pack(side="left")
     # Only add a calendar button when the created widget does not already
     # provide its own dropdown (e.g. a `DateEntry`). This avoids duplicate
     # calendar arrows in the UI.
     try:
-        if not (DateEntry is not None and isinstance(app.t_contract_start, DateEntry)):
-            ttk.Button(start_wrap, text="📅", width=3, command=lambda: app._open_calendar_for_widget(app.t_contract_start)).pack(side="left", padx=(6, 0))
+        date_entry_cls = getattr(app, "date_entry_cls", None)
+        if not (date_entry_cls is not None and isinstance(app.t_contract_start, date_entry_cls)):
+            ttk.Button(
+                start_wrap,
+                text="📅",
+                width=3,
+                command=lambda: open_calendar_for_widget(app, app.t_contract_start, date_entry_cls=getattr(app, "date_entry_cls", None)),
+            ).pack(side="left", padx=(6, 0))
     except Exception:
-        ttk.Button(start_wrap, text="📅", width=3, command=lambda: app._open_calendar_for_widget(app.t_contract_start)).pack(side="left", padx=(6, 0))
+        ttk.Button(
+            start_wrap,
+            text="📅",
+            width=3,
+            command=lambda: open_calendar_for_widget(app, app.t_contract_start, date_entry_cls=getattr(app, "date_entry_cls", None)),
+        ).pack(side="left", padx=(6, 0))
     app.t_contract_start.bind("<Return>", lambda e: app.add_truck())
 
     ttk.Label(form, text="Contract End").grid(row=0, column=10, sticky="w", padx=6, pady=8)
     end_wrap = ttk.Frame(form)
     end_wrap.grid(row=0, column=11, sticky="w", padx=6, pady=8)
-    app.t_contract_end = app._create_date_input(end_wrap, width=12, default_iso=None)
+    app.t_contract_end = create_date_input(
+        end_wrap,
+        width=12,
+        default_iso=None,
+        date_entry_cls=getattr(app, "date_entry_cls", None),
+    )
     app.t_contract_end.pack(side="left")
     try:
-        if not (DateEntry is not None and isinstance(app.t_contract_end, DateEntry)):
-            ttk.Button(end_wrap, text="📅", width=3, command=lambda: app._open_calendar_for_widget(app.t_contract_end)).pack(side="left", padx=(6, 0))
+        date_entry_cls = getattr(app, "date_entry_cls", None)
+        if not (date_entry_cls is not None and isinstance(app.t_contract_end, date_entry_cls)):
+            ttk.Button(
+                end_wrap,
+                text="📅",
+                width=3,
+                command=lambda: open_calendar_for_widget(app, app.t_contract_end, date_entry_cls=getattr(app, "date_entry_cls", None)),
+            ).pack(side="left", padx=(6, 0))
     except Exception:
-        ttk.Button(end_wrap, text="📅", width=3, command=lambda: app._open_calendar_for_widget(app.t_contract_end)).pack(side="left", padx=(6, 0))
+        ttk.Button(
+            end_wrap,
+            text="📅",
+            width=3,
+            command=lambda: open_calendar_for_widget(app, app.t_contract_end, date_entry_cls=getattr(app, "date_entry_cls", None)),
+        ).pack(side="left", padx=(6, 0))
     app.t_contract_end.bind("<Return>", lambda e: app.add_truck())
 
     ttk.Label(form, text="Customer").grid(row=1, column=0, sticky="w", padx=6, pady=8)
@@ -122,13 +149,13 @@ def build_trucks_tab(app, frame):
     ttk.Label(form, text="Notes").grid(row=1, column=5, sticky="w", padx=6, pady=8)
     app.t_notes = ttk.Entry(form, width=34)
     app.t_notes.grid(row=1, column=6, columnspan=2, sticky="ew", padx=6, pady=8)
-    app._add_placeholder(app.t_notes, "Additional notes...")
+    add_placeholder(app.t_notes, "Additional notes...")
     app.t_notes.bind("<Return>", lambda e: app.add_truck())
 
     ttk.Label(form, text="Contract Cost").grid(row=1, column=8, sticky="w", padx=6, pady=8)
     app.t_contract_rate = ttk.Entry(form, width=12)
     app.t_contract_rate.grid(row=1, column=9, sticky="w", padx=6, pady=8)
-    app._add_placeholder(app.t_contract_rate, "Monthly cost...")
+    add_placeholder(app.t_contract_rate, "Monthly cost...")
     app.t_contract_rate.bind("<Return>", lambda e: app.add_truck())
 
     btn_frame = ttk.Frame(form)
