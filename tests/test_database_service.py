@@ -11,7 +11,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
-from database_service import DatabaseService
+from data.database_service import DatabaseService
 
 
 class TestDatabaseServiceInit(unittest.TestCase):

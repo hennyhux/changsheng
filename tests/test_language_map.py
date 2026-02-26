@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
-from language_map import EN_TO_ZH
+from data.language_map import EN_TO_ZH
 
 
 class TestLanguageMap(unittest.TestCase):

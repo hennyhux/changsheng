@@ -1,10 +1,12 @@
 import tkinter as tk
 from tkinter import ttk
 
-from billing_date_utils import today
-from ui_helpers import add_placeholder, create_date_input, make_optional_date_clear_on_blur
+from utils.billing_date_utils import today
+from ui.ui_helpers import add_placeholder, create_date_input, make_optional_date_clear_on_blur
+from core.app_logging import trace
 
 
+@trace
 def build_contracts_tab(app, frame):
     frame.columnconfigure(0, weight=1)
     frame.columnconfigure(1, weight=0)

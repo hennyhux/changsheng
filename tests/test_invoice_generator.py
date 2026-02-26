@@ -9,7 +9,7 @@ from datetime import date
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
-from invoice_generator import (
+from invoicing.invoice_generator import (
     _parse_ymd,
     _elapsed_months_inclusive,
     _add_months,

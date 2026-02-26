@@ -9,7 +9,7 @@ from datetime import date, datetime
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
-from billing_date_utils import (
+from utils.billing_date_utils import (
     now_iso,
     today,
     ym,

@@ -1,11 +1,13 @@
 import tkinter as tk
 from tkinter import ttk
 
-from billing_date_utils import today
-from config import FONTS, TAG_COLORS
-from ui_helpers import create_date_input
+from utils.billing_date_utils import today
+from core.config import FONTS, TAG_COLORS
+from ui.ui_helpers import create_date_input
+from core.app_logging import trace
 
 
+@trace
 def build_invoices_tab(app, frame):
     frame.columnconfigure(0, weight=1)
     frame.columnconfigure(1, weight=0)

@@ -3,8 +3,10 @@ from tkinter import ttk
 from .invoices_tab import build_invoices_tab
 from .statement_tab import build_statement_tab
 from .overdue_tab import build_overdue_tab
+from core.app_logging import trace
 
 
+@trace
 def build_billing_tab(app, frame):
     frame.columnconfigure(0, weight=1)
     frame.rowconfigure(0, weight=1)

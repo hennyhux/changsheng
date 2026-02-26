@@ -1,9 +1,11 @@
 import tkinter as tk
 from tkinter import ttk
 
-from config import FONTS
+from core.config import FONTS
+from core.app_logging import trace
 
 
+@trace
 def build_dashboard_tab(app, frame):
     frame.columnconfigure(0, weight=1)
     frame.columnconfigure(1, weight=1)

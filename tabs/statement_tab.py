@@ -1,9 +1,11 @@
 import tkinter as tk
 from tkinter import ttk
 
-from billing_date_utils import today, ym
+from utils.billing_date_utils import today, ym
+from core.app_logging import trace
 
 
+@trace
 def build_statement_tab(app, frame):
     frame.columnconfigure(0, weight=1)
 

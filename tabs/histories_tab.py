@@ -1,7 +1,9 @@
 import tkinter as tk
 from tkinter import ttk
+from core.app_logging import trace
 
 
+@trace
 def build_histories_tab(app, frame):
     frame.columnconfigure(0, weight=1)
     frame.rowconfigure(1, weight=1)

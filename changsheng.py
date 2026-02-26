@@ -30,71 +30,30 @@ try:
 except ImportError:
     openpyxl = None
 
-from language_map import EN_TO_ZH, ZH_TO_EN
-from database_service import DatabaseService
-from invoice_generator import build_invoice_groups, build_pdf_invoice_data
-from invoice_pdf import render_invoice_pdf, reportlab_available
-from customer_picker import open_customer_picker
-from ledger_export import export_customer_ledger_xlsx
-from payment_history_dialog import show_contract_payment_history
-from ui_actions import (
-    add_customer_action,
-    add_truck_action,
-    backup_database_action,
-    create_contract_action,
-    clear_invoice_customer_search_action,
-    delete_customer_action,
-    delete_contract_action,
-    delete_truck_action,
-    edit_contract_action,
-    edit_selected_customer_action,
-    export_customers_trucks_csv_action,
-    import_customers_trucks_action,
-    open_payment_form_for_contract_action,
-    open_payment_form_window_action,
-    record_payment_for_selected_contract_action,
-    record_payment_for_selected_truck_action,
-    restore_database_action,
-    refresh_contracts_action,
-    refresh_histories_action,
-    refresh_invoices_action,
-    refresh_overdue_action,
-    refresh_statement_action,
-    reset_contract_payments_action,
-    show_contract_payment_history_action,
-    show_customer_ledger_action,
-    generate_customer_invoice_pdf_action,
-    generate_customer_invoice_pdf_for_customer_id_action,
-    generate_invoice_pdf_from_billing_selection_action,
-    get_contract_outstanding_as_of_action,
-    get_or_create_anchor_invoice_action,
-    on_tab_changed_action,
-    sync_selected_customer_to_forms_action,
-    tab_has_unsaved_data_action,
-    toggle_contract_action,
-    refresh_customers_action,
-    refresh_trucks_action,
-)
-from billing_date_utils import (
+from data.language_map import EN_TO_ZH, ZH_TO_EN
+from data.database_service import DatabaseService
+from dialogs.customer_picker import open_customer_picker
+from dialogs.payment_history_dialog import show_contract_payment_history
+from ui.ui_actions import on_tab_changed_action
+from utils.billing_date_utils import (
     today,
     ym,
     parse_ym,
     parse_ymd,
     add_months,
 )
-from validation import (
+from utils.validation import (
     normalize_whitespace,
 )
-from config import (
-    DB_PATH, HISTORY_LOG_FILE, EXCEPTIONS_LOG_FILE, SETTINGS_FILE, BACKUP_REMINDER_DAYS,
-    SEARCH_PLATE_PATTERN,
-    WINDOW_WIDTH, WINDOW_HEIGHT, TREE_ROW_HEIGHT, TREE_ALT_ROW_COLORS, FONTS, TAG_COLORS,
-    DELETE_BUTTON_BG, DELETE_BUTTON_FG, SELECTION_BG, SELECTION_FG,
+from core.config import (
+    DB_PATH, HISTORY_LOG_FILE, SETTINGS_FILE,
+    WINDOW_WIDTH, WINDOW_HEIGHT, TREE_ROW_HEIGHT, TREE_ALT_ROW_COLORS, FONTS,
+    DELETE_BUTTON_BG, SELECTION_BG, SELECTION_FG,
 )
 from dataclasses import dataclass
 from datetime import datetime, date, timedelta
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox
 try:
     _DateEntryBase = importlib.import_module("tkcalendar").DateEntry
 
@@ -136,22 +95,27 @@ except Exception:
 from tabs.customers_tab import build_customers_tab
 from tabs.trucks_tab import build_trucks_tab
 from tabs.contracts_tab import build_contracts_tab
-from tabs.invoices_tab import build_invoices_tab
 from tabs.dashboard_tab import build_dashboard_tab
-from tabs.statement_tab import build_statement_tab
-from tabs.overdue_tab import build_overdue_tab
 from tabs.histories_tab import build_histories_tab
 from tabs.billing_tab import build_billing_tab
-from ui_helpers import (
-    add_placeholder,
-    get_entry_value,
-    show_inline_error,
-    clear_inline_errors,
+from app.action_wrappers import ActionWrappersMixin
+from core.app_logging import (
+    setup_all_loggers,
+    get_app_logger,
+    log_ux_action,
+    trace,
 )
 
+# Initialize all loggers (exception, ux_action, trace) at import time
+setup_all_loggers()
+logger = get_app_logger()
+
+@trace
 def log_action(event_type: str, details: str):
-    """Append immutable action to history log file."""
+    """Append immutable action to history log file and UX action log."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Also log to UX action log
+    log_ux_action(event_type, details=details)
     try:
         with open(HISTORY_LOG_FILE, "a", encoding="utf-8") as f:
             f.write(f"[{timestamp}] {event_type} | {details}\n")
@@ -205,46 +169,9 @@ class Truck:
     customer_id: int | None
 
 
-# ============================================================================
-# LOGGING SETUP
-# ============================================================================
-def setup_logging():
-    """Configure logging to file and console."""
-    logger = logging.getLogger("changsheng_app")
-    
-    # Remove any existing handlers to avoid duplicates
-    logger.handlers.clear()
-    
-    # File handler - only warnings and above (suppress expected debug noise)
-    file_handler = logging.FileHandler(EXCEPTIONS_LOG_FILE, mode="a", encoding="utf-8")
-    file_handler.setLevel(logging.WARNING)
-    file_formatter = logging.Formatter(
-        "[%(asctime)s] %(levelname)-8s | %(funcName)s:%(lineno)d | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    file_handler.setFormatter(file_formatter)
-    
-    # Console handler - only warnings and errors
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.WARNING)
-    console_formatter = logging.Formatter(
-        "[%(asctime)s] %(levelname)-8s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    console_handler.setFormatter(console_formatter)
-    
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    logger.propagate = False
-    
-    return logger
 
 
-logger = setup_logging()
-
-
-class App(tk.Tk):
+class App(ActionWrappersMixin, tk.Tk):
     def __init__(self):
         super().__init__()
         self.current_language = "en"
@@ -267,6 +194,8 @@ class App(tk.Tk):
             return
         self._app_settings = self._load_app_settings()
         self._ensure_history_log_exists()
+        self._log_action = log_action
+        self._openpyxl_module = openpyxl
 
         # Top-level layout
         self.columnconfigure(0, weight=1)
@@ -510,6 +439,7 @@ class App(tk.Tk):
             self.refresh_contracts()
             self._select_tree_row_by_id(self.contract_tree, target_id)
 
+    @trace
     def refresh_dashboard(self):
         if not hasattr(self, "dash_active_contracts_var"):
             return
@@ -897,24 +827,6 @@ class App(tk.Tk):
         else:
             messagebox.showinfo("No Trucks", f"No trucks found for customer '{customer_name}'.")
 
-    def backup_database(self):
-        backup_database_action(
-            app=self,
-            db=self.db,
-            get_last_backup_dir_cb=self._get_last_backup_dir,
-            set_last_backup_dir_cb=self._set_last_backup_dir,
-            log_action_cb=log_action,
-        )
-
-    def restore_database(self):
-        restore_database_action(
-            app=self,
-            db=self.db,
-            get_last_backup_dir_cb=self._get_last_backup_dir,
-            set_last_backup_dir_cb=self._set_last_backup_dir,
-            log_action_cb=log_action,
-        )
-
     def _ensure_history_log_exists(self) -> None:
         try:
             with open(HISTORY_LOG_FILE, "a+", encoding="utf-8") as f:
@@ -988,174 +900,6 @@ class App(tk.Tk):
         if do_backup:
             self.backup_database()
 
-    # ---------------------------
-    # Thin action wrappers
-    # ---------------------------
-    def export_customers_trucks_csv(self):
-        export_customers_trucks_csv_action(
-            app=self,
-            db=self.db,
-            openpyxl_module=openpyxl,
-            search_query=self.customer_search.get().strip(),
-            show_invalid_cb=self._show_invalid,
-            log_action_cb=log_action,
-        )
-
-    def import_customers_trucks(self):
-        import_customers_trucks_action(
-            app=self,
-            db=self.db,
-            openpyxl_module=openpyxl,
-            log_action_cb=log_action,
-        )
-
-
-    def refresh_customers(self):
-        refresh_customers_action(
-            app=self,
-            db=self.db,
-            show_invalid_cb=self._show_invalid,
-            row_stripe_tag_cb=self._row_stripe_tag,
-            get_contract_outstanding_as_of_cb=self._get_contract_outstanding_as_of,
-            outstanding_tag_from_amount_cb=self._outstanding_tag_from_amount,
-        )
-        self._update_view_trucks_button_state()
-
-    def add_customer(self):
-        add_customer_action(
-            app=self,
-            db=self.db,
-            get_entry_value_cb=get_entry_value,
-            clear_inline_errors_cb=clear_inline_errors,
-            show_inline_error_cb=show_inline_error,
-            show_invalid_cb=self._show_invalid,
-            add_placeholder_cb=add_placeholder,
-            log_action_cb=log_action,
-        )
-
-    def edit_selected_customer(self):
-        edit_selected_customer_action(
-            app=self,
-            db=self.db,
-            log_action_cb=log_action,
-        )
-
-    def delete_customer(self):
-        delete_customer_action(
-            app=self,
-            db=self.db,
-            log_action_cb=log_action,
-        )
-
-    def show_customer_ledger(self):
-        show_customer_ledger_action(
-            app=self,
-            db=self.db,
-            tag_colors=TAG_COLORS,
-            log_action_cb=log_action,
-            export_customer_ledger_xlsx_cb=export_customer_ledger_xlsx,
-        )
-
-    def record_payment_for_selected_truck(self):
-        record_payment_for_selected_truck_action(
-            app=self,
-            db=self.db,
-            open_payment_form_for_contract_cb=self._open_payment_form_for_contract,
-        )
-
-    def refresh_trucks(self):
-        refresh_trucks_action(
-            app=self,
-            db=self.db,
-            show_invalid_cb=self._show_invalid,
-            row_stripe_tag_cb=self._row_stripe_tag,
-            get_contract_outstanding_as_of_cb=self._get_contract_outstanding_as_of,
-            outstanding_tag_from_text_cb=self._outstanding_tag_from_text,
-            truck_search_mode=getattr(self, "_truck_search_mode", "all"),
-            customer_filter_id=getattr(self, "_truck_filter_customer_id", None),
-        )
-
-    def add_truck(self):
-        add_truck_action(
-            app=self,
-            db=self.db,
-            get_entry_value_cb=get_entry_value,
-            get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
-            clear_inline_errors_cb=clear_inline_errors,
-            show_inline_error_cb=show_inline_error,
-            show_invalid_cb=self._show_invalid,
-            add_placeholder_cb=add_placeholder,
-            log_action_cb=log_action,
-        )
-
-    def delete_truck(self):
-        delete_truck_action(
-            app=self,
-            db=self.db,
-            log_action_cb=log_action,
-        )
-
-    def record_payment_for_selected_contract(self):
-        record_payment_for_selected_contract_action(
-            app=self,
-            open_payment_form_for_contract_cb=self._open_payment_form_for_contract,
-        )
-
-    def refresh_contracts(self):
-        refresh_contracts_action(
-            app=self,
-            db=self.db,
-            status_badge_cb=self._status_badge,
-            row_stripe_tag_cb=self._row_stripe_tag,
-            get_contract_outstanding_as_of_cb=self._get_contract_outstanding_as_of,
-            outstanding_tag_from_amount_cb=self._outstanding_tag_from_amount,
-            customer_filter_id=getattr(self, "_truck_filter_customer_id", None),
-        )
-
-    def create_contract(self):
-        create_contract_action(
-            app=self,
-            db=self.db,
-            get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
-            get_selected_truck_id_cb=self._get_selected_truck_id_from_combo,
-            get_entry_value_cb=get_entry_value,
-            clear_inline_errors_cb=clear_inline_errors,
-            show_inline_error_cb=show_inline_error,
-            show_invalid_cb=self._show_invalid,
-            log_action_cb=log_action,
-        )
-
-    def toggle_contract(self):
-        toggle_contract_action(
-            app=self,
-            db=self.db,
-        )
-
-    def edit_contract(self):
-        edit_contract_action(
-            app=self,
-            db=self.db,
-            get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
-            get_selected_truck_id_cb=self._get_selected_truck_id_from_combo,
-            show_invalid_cb=self._show_invalid,
-            log_action_cb=log_action,
-        )
-
-    def delete_contract(self):
-        delete_contract_action(
-            app=self,
-            db=self.db,
-            log_action_cb=log_action,
-        )
-
-    def show_contract_payment_history(self):
-        show_contract_payment_history_action(
-            app=self,
-            db=self.db,
-            get_contract_outstanding_as_of_cb=self._get_contract_outstanding_as_of,
-            show_contract_payment_history_dialog_cb=show_contract_payment_history,
-        )
-
     def _set_selected_customer(self, customer_id: int):
         # Set on truck tab + contract tab
         if hasattr(self, "truck_customer_combo"):
@@ -1200,6 +944,7 @@ class App(tk.Tk):
 
         open_customer_picker(self, customers, normalize_whitespace, on_select)
 
+    @trace
     def view_selected_truck_contract_history(self):
         sel = self.truck_tree.selection()
         if not sel:
@@ -1376,6 +1121,7 @@ class App(tk.Tk):
         self._update_invoice_parent_label(row_id)
         return "break"
 
+    @trace
     def collapse_all_invoice_groups(self):
         current_selection = self.invoice_tree.selection()
         if current_selection:
@@ -1391,6 +1137,7 @@ class App(tk.Tk):
 
         self.invoice_tree.focus("")
 
+    @trace
     def expand_all_invoice_groups(self):
         for parent_iid in self.invoice_tree.get_children(""):
             self.invoice_tree.item(parent_iid, open=True)
@@ -1451,62 +1198,10 @@ class App(tk.Tk):
                 label += " ▼" if self._invoice_sort_rev else " ▲"
             tree.heading(c, text=label)
 
+    @trace
     def generate_invoices(self):
         self.refresh_invoices()
         messagebox.showinfo("Recalculated", "Outstanding balances recalculated for selected date.")
-
-    def refresh_invoices(self):
-        refresh_invoices_action(
-            app=self,
-            db=self.db,
-            build_invoice_groups_cb=build_invoice_groups,
-            invoice_group_label_cb=self._invoice_group_label,
-            status_badge_cb=self._status_badge,
-            refresh_invoice_parent_labels_cb=self._refresh_invoice_parent_labels,
-            outstanding_tag_from_amount_cb=self._outstanding_tag_from_amount,
-        )
-
-    def _clear_invoice_customer_search(self):
-        clear_invoice_customer_search_action(self)
-
-    def reset_contract_payments(self):
-        reset_contract_payments_action(
-            app=self,
-            db=self.db,
-            log_action_cb=log_action,
-        )
-
-    def _open_payment_form_window(self):
-        open_payment_form_window_action(
-            app=self,
-            open_payment_form_for_contract_cb=self._open_payment_form_for_contract,
-        )
-
-    def _open_payment_form_for_contract(self, contract_id: int, plate_label: str | None = None, as_of_date: date | None = None):
-        open_payment_form_for_contract_action(
-            app=self,
-            db=self.db,
-            contract_id=contract_id,
-            plate_label=plate_label,
-            as_of_date=as_of_date,
-            get_contract_outstanding_as_of_cb=self._get_contract_outstanding_as_of,
-            get_or_create_anchor_invoice_cb=self._get_or_create_anchor_invoice,
-            log_action_cb=log_action,
-        )
-    
-    def _get_or_create_anchor_invoice(self, contract_id: int, as_of_date: date) -> int:
-        return get_or_create_anchor_invoice_action(
-            db=self.db,
-            contract_id=contract_id,
-            as_of_date=as_of_date,
-        )
-
-    def _get_contract_outstanding_as_of(self, contract_id: int, as_of_date: date) -> float:
-        return get_contract_outstanding_as_of_action(
-            db=self.db,
-            contract_id=contract_id,
-            as_of_date=as_of_date,
-        )
 
     # ---------------------------
     # Overdue tab
@@ -1561,30 +1256,6 @@ class App(tk.Tk):
         elif selected == str(self.sub_invoices):
             self._sync_search_boxes_from_truck_search()
             self.refresh_invoices()
-
-    def refresh_overdue(self):
-        search_text = ""
-        if hasattr(self, "overdue_search"):
-            search_text = normalize_whitespace(self.overdue_search.get())
-        refresh_overdue_action(
-            app=self,
-            db=self.db,
-            parse_ymd_cb=parse_ymd,
-            ym_cb=ym,
-            row_stripe_tag_cb=self._row_stripe_tag,
-            outstanding_tag_from_amount_cb=self._outstanding_tag_from_amount,
-            search_query=search_text,
-        )
-
-    def refresh_statement(self):
-        refresh_statement_action(
-            app=self,
-            db=self.db,
-            ym_cb=ym,
-            parse_ym_cb=parse_ym,
-            add_months_cb=add_months,
-            parse_ymd_cb=parse_ymd,
-        )
 
     # ---------------------------
     # Shared dropdown reloaders
@@ -1676,55 +1347,6 @@ class App(tk.Tk):
                 combo.current(i)
                 return
 
-    def _sync_selected_customer_to_forms(self):
-        sync_selected_customer_to_forms_action(
-            app=self,
-            set_selected_customer_cb=self._set_selected_customer,
-        )
-
-    # ---------------------------
-    # Histories tab
-    # ---------------------------
-    def refresh_histories(self):
-        refresh_histories_action(
-            app=self,
-            ensure_history_log_exists_cb=self._ensure_history_log_exists,
-            history_log_file=HISTORY_LOG_FILE,
-        )
-
-    def _generate_invoice_pdf_from_billing_selection(self):
-        generate_invoice_pdf_from_billing_selection_action(
-            app=self,
-            db=self.db,
-            generate_customer_invoice_pdf_for_customer_id_cb=self._generate_customer_invoice_pdf_for_customer_id,
-        )
-
-    # ---------------------------
-    # PDF Invoice Generation
-    # ---------------------------
-    def generate_customer_invoice_pdf(self):
-        generate_customer_invoice_pdf_action(
-            app=self,
-            generate_customer_invoice_pdf_for_customer_id_cb=self._generate_customer_invoice_pdf_for_customer_id,
-        )
-
-    def _generate_customer_invoice_pdf_for_customer_id(self, customer_id: int):
-        generate_customer_invoice_pdf_for_customer_id_action(
-            app=self,
-            db=self.db,
-            customer_id=customer_id,
-            build_pdf_invoice_data_cb=build_pdf_invoice_data,
-            reportlab_available_cb=reportlab_available,
-            render_invoice_pdf_cb=render_invoice_pdf,
-        )
-
-    def _tab_has_unsaved_data(self, tab_str: str) -> bool:
-        return tab_has_unsaved_data_action(
-            app=self,
-            tab_str=tab_str,
-            get_entry_value_cb=get_entry_value,
-        )
-
     def _on_tab_changed(self, event):
         on_tab_changed_action(
             app=self,
@@ -1735,6 +1357,7 @@ class App(tk.Tk):
             self._sync_search_boxes_from_truck_search()
             self.refresh_contracts()
 
+    @trace
     def on_close(self):
         try:
             self.db.close()

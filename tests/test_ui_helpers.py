@@ -11,11 +11,11 @@ import unittest
 import tkinter as tk
 from tkinter import ttk
 
-from ui_helpers import (
+from ui.ui_helpers import (
     get_entry_value,
     clear_inline_errors,
 )
-from billing_date_utils import today
+from utils.billing_date_utils import today
 
 
 class TestGetEntryValue(unittest.TestCase):

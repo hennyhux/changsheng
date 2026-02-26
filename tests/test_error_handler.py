@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
-from error_handler import (
+from core.error_handler import (
     safe_ui_action,
     safe_ui_action_returning,
     wrap_action_with_error_handling,

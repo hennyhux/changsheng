@@ -21,8 +21,15 @@ hidden_imports = [
     'openpyxl',  # Optional but included if available
 ]
 
-# Collect submodules
+# Collect submodules from our application packages and tkinter
 hidden_imports.extend(collect_submodules('tkinter'))
+hidden_imports.extend(collect_submodules('core'))
+hidden_imports.extend(collect_submodules('utils'))
+hidden_imports.extend(collect_submodules('data'))
+hidden_imports.extend(collect_submodules('invoicing'))
+hidden_imports.extend(collect_submodules('dialogs'))
+hidden_imports.extend(collect_submodules('ui'))
+hidden_imports.extend(collect_submodules('tabs'))
 
 a = Analysis(
     ['changsheng.py'],

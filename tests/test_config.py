@@ -9,7 +9,7 @@ import re
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
-from config import (
+from core.config import (
     PHONE_PATTERN,
     PLATE_PATTERN,
     STATE_PATTERN,

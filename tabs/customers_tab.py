@@ -1,8 +1,10 @@
 from tkinter import ttk
 
-from ui_helpers import add_placeholder
+from ui.ui_helpers import add_placeholder
+from core.app_logging import trace
 
 
+@trace
 def build_customers_tab(app, frame):
     frame.columnconfigure(0, weight=1)
     frame.columnconfigure(1, weight=0)

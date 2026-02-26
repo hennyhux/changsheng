@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
-from validation import (
+from utils.validation import (
     normalize_whitespace,
     required_text,
     optional_text,
@@ -200,7 +200,7 @@ class TestEmptyAndNoneEdgeCases(unittest.TestCase):
 
     def test_validate_consecutive_calls_same_input(self):
         """Test that multiple calls to validate same input are consistent."""
-        from validation import required_text
+        from utils.validation import required_text
         input_val = "Test Value"
         result1 = required_text("Field", input_val)
         result2 = required_text("Field", input_val)
@@ -208,7 +208,7 @@ class TestEmptyAndNoneEdgeCases(unittest.TestCase):
 
     def test_plate_consecutive_calls_idempotent(self):
         """Test plate validation is idempotent."""
-        from validation import required_plate
+        from utils.validation import required_plate
         plate = "ABC-1234"
         result1 = required_plate(plate)
         result2 = required_plate(result1)
