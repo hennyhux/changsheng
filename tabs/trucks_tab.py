@@ -32,7 +32,12 @@ def build_trucks_tab(app, frame):
     app.truck_tree = ttk.Treeview(frame, columns=cols, show="headings", height=18)
     truck_headings = {"id": "ID", "plate": "Plate", "state": "State", "make": "Make", "model": "Model", "customer": "Customer", "outstanding": "Outstanding"}
     for c in cols:
-        app.truck_tree.heading(c, text=truck_headings[c], anchor="center")
+        app.truck_tree.heading(
+            c,
+            text=truck_headings[c],
+            anchor="center",
+            command=lambda _c=c: app._sort_tree_column(app.truck_tree, _c),
+        )
         width_map = {"id": 100, "plate": 180, "state": 80, "make": 180, "model": 180, "customer": 420, "outstanding": 170}
         app.truck_tree.column(c, width=width_map.get(c, 150), anchor="center")
     app.truck_tree.column("plate", anchor="center")
@@ -45,7 +50,19 @@ def build_trucks_tab(app, frame):
     app.truck_tree.configure(yscrollcommand=truck_vsb.set)
     truck_vsb.grid(row=1, column=1, sticky="ns", padx=(0, 10))
     app._init_tree_striping(app.truck_tree)
-    app.truck_tree.bind("<Double-1>", lambda _e: app.view_selected_truck_contract_history())
+
+    def _on_truck_tree_double_click(event):
+        region = app.truck_tree.identify("region", event.x, event.y)
+        if region != "cell":
+            return
+        row_id = app.truck_tree.identify_row(event.y)
+        if not row_id:
+            return
+        app.truck_tree.selection_set(row_id)
+        app.truck_tree.focus(row_id)
+        app.view_selected_truck_contract_history()
+
+    app.truck_tree.bind("<Double-1>", _on_truck_tree_double_click)
 
     form = ttk.LabelFrame(frame, text="Add Truck", padding="14")
     form.grid(row=2, column=0, sticky="ew", padx=10, pady=(12, 14))

@@ -126,4 +126,11 @@ def build_invoices_tab(app, frame):
     invoice_vsb.grid(row=2, column=1, sticky="ns", padx=(0, 10))
     app.invoice_tree.bind("<<TreeviewOpen>>", app._on_invoice_tree_open_close)
     app.invoice_tree.bind("<<TreeviewClose>>", app._on_invoice_tree_open_close)
-    app.invoice_tree.bind("<Double-1>", app._toggle_invoice_parent_row)
+
+    def _on_invoice_tree_double_click(event):
+        region = app.invoice_tree.identify("region", event.x, event.y)
+        if region != "cell":
+            return
+        return app._toggle_invoice_parent_row(event)
+
+    app.invoice_tree.bind("<Double-1>", _on_invoice_tree_double_click)

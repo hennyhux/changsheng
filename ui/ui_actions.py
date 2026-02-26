@@ -623,6 +623,9 @@ def open_payment_form_for_contract_action(
         app.refresh_invoices()
         app.refresh_statement()
         app.refresh_overdue()
+        app.refresh_dashboard()
+        app.refresh_histories()
+        app.refresh_payments()
         messagebox.showinfo("✓ Saved", f"Payment of ${amt:.2f} has been recorded.")
         return True
 
@@ -972,7 +975,7 @@ def record_payment_for_selected_contract_action(
 def record_payment_for_selected_truck_action(
     app: Any,
     db: "DatabaseService",
-    open_payment_form_for_contract_cb: Callable[[int], None],
+    open_payment_form_for_contract_cb: Callable[[int, str | None, date | None], None],
 ) -> None:
     sel = app.truck_tree.selection()
     if not sel:
@@ -996,7 +999,11 @@ def record_payment_for_selected_truck_action(
         return
 
     contract_id = int(contract_row["contract_id"])
-    open_payment_form_for_contract_cb(contract_id)
+    plate_label = str(values[1]).strip() if len(values) > 1 else ""
+    if not plate_label:
+        plate_from_contract = contract_row["plate"] if "plate" in contract_row.keys() else None
+        plate_label = str(plate_from_contract or "").strip()
+    open_payment_form_for_contract_cb(contract_id, plate_label or None, None)
 
 
 @safe_ui_action("Edit Contract")
@@ -1498,6 +1505,7 @@ def refresh_contracts_action(
             tags=(row_stripe_tag_cb(row_index), outstanding_tag_from_amount_cb(outstanding_amt)),
         )
 
+    app._reapply_tree_sort(app.contract_tree)
     app.refresh_invoices()
     app.refresh_overdue()
 
@@ -1548,6 +1556,7 @@ def refresh_customers_action(
             tags=(row_stripe_tag_cb(row_index), outstanding_tag_from_amount_cb(customer_outstanding)),
         )
 
+    app._reapply_tree_sort(app.customer_tree)
     app._reload_customer_dropdowns()
 
 
@@ -1601,6 +1610,7 @@ def refresh_trucks_action(
             tags=(row_stripe_tag_cb(row_index), outstanding_tag_from_text_cb(outstanding_text)),
         )
 
+    app._reapply_tree_sort(app.truck_tree)
     app._reload_truck_dropdowns()
 
 
@@ -1878,6 +1888,8 @@ def refresh_overdue_action(
                 tags=(row_stripe_tag_cb(row_index), outstanding_tag_from_amount_cb(bal)),
             )
 
+    app._reapply_tree_sort(app.overdue_tree)
+
 
 @safe_ui_action("Refresh Statement")
 def refresh_statement_action(
@@ -1910,6 +1922,33 @@ def refresh_statement_action(
     payment_rows = db.get_paid_totals_by_contract()
     paid_by_contract = {int(row["contract_id"]): float(row["paid_total"]) for row in payment_rows}
 
+    def _expected_for_month(month_start_local: date, month_end_local: date) -> float:
+        prev_month_end_local = month_start_local - timedelta(days=1)
+        expected_local = 0.0
+
+        for local_row in contracts:
+            start_date_local = parse_ymd_cb(local_row["start_date"])
+            if not start_date_local:
+                continue
+
+            contract_end_local = parse_ymd_cb(local_row["end_date"]) if local_row["end_date"] else None
+            if int(local_row["is_active"]) != 1 and contract_end_local is None:
+                continue
+
+            effective_end_month_local = month_end_local if contract_end_local is None else min(contract_end_local, month_end_local)
+            effective_end_prev_local = prev_month_end_local if contract_end_local is None else min(contract_end_local, prev_month_end_local)
+
+            months_through_month_local = elapsed_months_inclusive(start_date_local, effective_end_month_local)
+            months_through_prev_local = elapsed_months_inclusive(start_date_local, effective_end_prev_local)
+
+            rate_local = float(local_row["monthly_rate"])
+            expected_through_month_local = rate_local * months_through_month_local
+            expected_through_prev_local = rate_local * months_through_prev_local
+            expected_for_month_local = max(0.0, expected_through_month_local - expected_through_prev_local)
+            expected_local += expected_for_month_local
+
+        return expected_local
+
     expected_total = 0.0
     paid_total = 0.0
     for row in contracts:
@@ -1940,6 +1979,106 @@ def refresh_statement_action(
         if allocated_for_month > expected_for_month:
             allocated_for_month = expected_for_month
         paid_total += allocated_for_month
+
+    if hasattr(app, "statement_expected_chart_canvas"):
+        chart_mode = "combo"
+        if hasattr(app, "statement_chart_mode"):
+            chart_mode = str(app.statement_chart_mode.get() or "combo").strip().lower()
+        if chart_mode not in {"bar", "line", "combo"}:
+            chart_mode = "combo"
+
+        chart_points: list[tuple[str, float]] = []
+        for offset in range(11, -1, -1):
+            y_i, m_i = add_months_cb(year, month, -offset)
+            m_start_i = date(y_i, m_i, 1)
+            n_y_i, n_m_i = add_months_cb(y_i, m_i, 1)
+            m_end_i = date(n_y_i, n_m_i, 1) - timedelta(days=1)
+            chart_points.append((f"{y_i:04d}-{m_i:02d}", _expected_for_month(m_start_i, m_end_i)))
+
+        canvas = app.statement_expected_chart_canvas
+        canvas.update_idletasks()
+        width = max(int(canvas.winfo_width()), 640)
+        height = max(int(canvas.winfo_height()), 300)
+        canvas.delete("all")
+        canvas.configure(bg="#ffffff")
+
+        pad_l, pad_r, pad_t, pad_b = 64, 24, 26, 52
+        x0, y0 = pad_l, pad_t
+        x1, y1 = width - pad_r, height - pad_b
+
+        canvas.create_line(x0, y1, x1, y1, fill="#2b2b2b", width=2)
+        canvas.create_line(x0, y0, x0, y1, fill="#2b2b2b", width=2)
+
+        max_val = max((val for _, val in chart_points), default=0.0)
+        if max_val <= 0:
+            max_val = 1.0
+        max_val *= 1.08
+
+        y_ticks = 4
+        for i in range(y_ticks + 1):
+            v = max_val * (i / y_ticks)
+            y_px = y1 - (i / y_ticks) * (y1 - y0)
+            canvas.create_line(x0, y_px, x1, y_px, fill="#d6dbe3", width=1)
+            canvas.create_text(x0 - 8, y_px, text=f"${v:,.0f}", anchor="e", fill="#1f2937", font=("TkDefaultFont", 9, "bold"))
+
+        span = max(1, len(chart_points) - 1)
+        poly_coords: list[float] = []
+        slot_w = (x1 - x0) / max(1, len(chart_points))
+        bar_w = max(8.0, min(30.0, slot_w * 0.55))
+
+        for idx, (label, val) in enumerate(chart_points):
+            x_px = x0 + (idx / span) * (x1 - x0)
+            y_px = y1 - (val / max_val) * (y1 - y0)
+            bar_left = x_px - (bar_w / 2)
+            bar_right = x_px + (bar_w / 2)
+            if chart_mode in {"bar", "combo"}:
+                canvas.create_rectangle(
+                    bar_left,
+                    y_px,
+                    bar_right,
+                    y1,
+                    fill="#9fc4ff",
+                    outline="#7eaaf5",
+                    width=1,
+                )
+
+            poly_coords.extend([x_px, y_px])
+            if chart_mode in {"line", "combo"}:
+                canvas.create_oval(x_px - 3, y_px - 3, x_px + 3, y_px + 3, fill="#1148a8", outline="#1148a8")
+            if idx in {0, len(chart_points) - 1} or idx % 2 == 0:
+                canvas.create_text(x_px, y1 + 16, text=label[5:], anchor="n", fill="#1f2937", font=("TkDefaultFont", 9, "bold"))
+
+            if idx in {len(chart_points) - 1, max(0, len(chart_points) - 4), 0}:
+                canvas.create_text(
+                    x_px,
+                    max(y0 + 10, y_px - 10),
+                    text=f"${val:,.0f}",
+                    anchor="s",
+                    fill="#0f2f75",
+                    font=("TkDefaultFont", 9, "bold"),
+                )
+
+        if chart_mode in {"line", "combo"} and len(poly_coords) >= 4:
+            canvas.create_line(*poly_coords, fill="#1148a8", width=3, smooth=True)
+
+        latest_label, latest_val = chart_points[-1]
+        canvas.create_text(
+            x1,
+            y0,
+            anchor="ne",
+            text=f"{latest_label}: ${latest_val:,.2f}",
+            fill="#111827",
+            font=("TkDefaultFont", 10, "bold"),
+        )
+
+        canvas.create_text(
+            x0,
+            y0,
+            anchor="nw",
+            text=f"12-Month Expected Revenue Trend ({chart_mode.title()})",
+            fill="#111827",
+            font=("TkDefaultFont", 10, "bold"),
+        )
 
     outstanding = expected_total - paid_total
     app.statement_expected_var.set(f"${expected_total:.2f}")
@@ -2165,6 +2304,7 @@ def refresh_invoices_action(
     if hasattr(app, "_apply_invoice_tree_visual_tags"):
         app._apply_invoice_tree_visual_tags()
 
+    app._reapply_tree_sort(app.invoice_tree)
     if selected_child_iid:
         app.invoice_tree.selection_set(selected_child_iid)
         app.invoice_tree.focus(selected_child_iid)
@@ -2229,6 +2369,7 @@ def reset_contract_payments_action(
     app.refresh_invoices()
     app.refresh_statement()
     app.refresh_overdue()
+    app.refresh_dashboard()
     messagebox.showinfo("Done", f"All {payment_count} payment(s) for Contract {contract_id} have been removed.")
 
 

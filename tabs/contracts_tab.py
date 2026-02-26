@@ -26,7 +26,12 @@ def build_contracts_tab(app, frame):
     app.contract_tree = ttk.Treeview(frame, columns=cols, show="headings", height=18)
     contract_headings = {"contract_id": "Contract ID", "status": "Status", "customer": "Customer", "scope": "Plate", "rate": "Rate", "start": "Start", "end": "End", "outstanding": "Outstanding"}
     for c in cols:
-        app.contract_tree.heading(c, text=contract_headings[c], anchor="center")
+        app.contract_tree.heading(
+            c,
+            text=contract_headings[c],
+            anchor="center",
+            command=lambda _c=c: app._sort_tree_column(app.contract_tree, _c),
+        )
         width = 150
         if c == "customer":
             width = 320

@@ -35,7 +35,12 @@ def build_overdue_tab(app, frame):
     app.overdue_tree = ttk.Treeview(frame, columns=cols, show="headings", height=22)
     overdue_headings = {"month": "Month", "date": "Date", "invoice_id": "Contract ID", "customer": "Customer", "scope": "Scope", "amount": "Amount", "paid": "Paid", "balance": "Balance"}
     for c in cols:
-        app.overdue_tree.heading(c, text=overdue_headings[c], anchor="center")
+        app.overdue_tree.heading(
+            c,
+            text=overdue_headings[c],
+            anchor="center",
+            command=lambda _c=c: app._sort_tree_column(app.overdue_tree, _c),
+        )
         width = 150
         if c == "customer":
             width = 340
@@ -55,3 +60,16 @@ def build_overdue_tab(app, frame):
     app.overdue_tree.configure(yscrollcommand=overdue_vsb.set)
     overdue_vsb.grid(row=1, column=1, sticky="ns", padx=(0, 10))
     app._init_tree_striping(app.overdue_tree)
+
+    def _on_overdue_tree_double_click(event):
+        region = app.overdue_tree.identify("region", event.x, event.y)
+        if region != "cell":
+            return
+        row_id = app.overdue_tree.identify_row(event.y)
+        if not row_id:
+            return
+        app.overdue_tree.selection_set(row_id)
+        app.overdue_tree.focus(row_id)
+        app._record_payment_for_selected_overdue()
+
+    app.overdue_tree.bind("<Double-1>", _on_overdue_tree_double_click)

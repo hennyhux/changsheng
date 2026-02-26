@@ -104,9 +104,20 @@ def open_customer_picker(
         on_select(customer_id)
         picker.destroy()
 
+    def _on_tree_double_click(event) -> None:
+        region = tree.identify("region", event.x, event.y)
+        if region != "cell":
+            return
+        row_id = tree.identify_row(event.y)
+        if not row_id:
+            return
+        tree.selection_set(row_id)
+        tree.focus(row_id)
+        _select_customer()
+
     search_entry.bind("<KeyRelease>", _refresh_results)
     search_entry.bind("<Return>", _select_customer)
-    tree.bind("<Double-1>", _select_customer)
+    tree.bind("<Double-1>", _on_tree_double_click)
     tree.bind("<Return>", _select_customer)
 
     btns = ttk.Frame(picker)

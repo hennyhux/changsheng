@@ -13,8 +13,8 @@ def show_contract_payment_history(parent: tk.Misc, contract_info: dict, rows: It
     win = tk.Toplevel(parent)
     win.title(f"Payment History — Contract #{contract_info['contract_id']}")
     win.resizable(True, True)
-    win.geometry("1360x760")
-    win.minsize(1180, 680)
+    win.geometry("1600x900")
+    win.minsize(1400, 800)
     win.transient(parent)
     win.grab_set()
 

@@ -1,22 +1,5 @@
 #!/usr/bin/env python3
-"""
-Changsheng - Truck Lot Tracker (Tkinter + SQLite)
 
-GUI features:
-- Add customer
-- Add truck
-- Create contract (per-truck OR customer-level)
-- Generate invoices for a month
-- View invoices for a month
-- Record payment
-- Overdue report (last 6 months)
-
-Run:
-  python changsheng.py
-
-DB:
-  changsheng.db (created automatically)
-"""
 from __future__ import annotations
 
 import sqlite3
@@ -25,6 +8,7 @@ import json
 import logging
 import logging.handlers
 import importlib
+import re
 try:
     import openpyxl
 except ImportError:
@@ -37,8 +21,6 @@ from dialogs.payment_history_dialog import show_contract_payment_history
 from ui.ui_actions import on_tab_changed_action
 from utils.billing_date_utils import (
     today,
-    ym,
-    parse_ym,
     parse_ymd,
     add_months,
 )
@@ -47,8 +29,9 @@ from utils.validation import (
 )
 from core.config import (
     DB_PATH, HISTORY_LOG_FILE, SETTINGS_FILE,
-    WINDOW_WIDTH, WINDOW_HEIGHT, TREE_ROW_HEIGHT, TREE_ALT_ROW_COLORS, FONTS,
+    WINDOW_WIDTH, WINDOW_HEIGHT, TREE_ROW_HEIGHT, FONTS,
     DELETE_BUTTON_BG, SELECTION_BG, SELECTION_FG,
+    THEME_PALETTES,
 )
 from dataclasses import dataclass
 from datetime import datetime, date, timedelta
@@ -136,23 +119,6 @@ def enable_windows_dpi_awareness() -> None:
             logger.debug(f"SetProcessDPIAware also failed: {e2}")
 
 
-def sum_payments(db: DatabaseService, invoice_id: int) -> float:
-    return db.get_total_payments_for_invoice(invoice_id)
-
-
-def invoice_balance(db: DatabaseService, invoice_row: sqlite3.Row) -> tuple[float, float, float]:
-    amt = float(invoice_row["amount"])
-
-    # Some queries alias the invoice id as "invoice_id" instead of "id"
-    if "id" in invoice_row.keys():
-        inv_id = int(invoice_row["id"])
-    else:
-        inv_id = int(invoice_row["invoice_id"])
-
-    paid = sum_payments(db, inv_id)
-    bal = amt - paid
-    return amt, paid, bal
-
 @dataclass
 class Customer:
     id: int
@@ -169,13 +135,14 @@ class Truck:
     customer_id: int | None
 
 
-
-
 class App(ActionWrappersMixin, tk.Tk):
     def __init__(self):
         super().__init__()
         self.current_language = "en"
         self.language_selectors: list[ttk.Combobox] = []
+        self.theme_selectors: list[ttk.Combobox] = []
+        self.theme_mode = "light"
+        self._theme_palette = THEME_PALETTES["light"]
         self.date_entry_cls = DateEntry
         self.title("Changsheng - Truck Lot Tracker")
         self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
@@ -193,6 +160,7 @@ class App(ActionWrappersMixin, tk.Tk):
             self.destroy()
             return
         self._app_settings = self._load_app_settings()
+        self.theme_mode = self._normalize_theme_mode(self._app_settings.get("theme_mode", "light"))
         self._ensure_history_log_exists()
         self._log_action = log_action
         self._openpyxl_module = openpyxl
@@ -208,6 +176,10 @@ class App(ActionWrappersMixin, tk.Tk):
         ttk.Label(top_bar, text="Language:").grid(row=0, column=1, sticky="e", padx=(12, 4))
         self.global_lang_selector = self._create_language_selector(top_bar, width=6)
         self.global_lang_selector.grid(row=0, column=2, sticky="e")
+
+        ttk.Label(top_bar, text="Theme:").grid(row=0, column=3, sticky="e", padx=(14, 4))
+        self.global_theme_selector = self._create_theme_selector(top_bar, width=8)
+        self.global_theme_selector.grid(row=0, column=4, sticky="e")
 
         nb = ttk.Notebook(self, style="MainTabs.TNotebook")
         nb.grid(row=1, column=0, sticky="nsew")
@@ -235,6 +207,7 @@ class App(ActionWrappersMixin, tk.Tk):
         build_billing_tab(self, self.tab_billing)
         build_histories_tab(self, self.tab_histories)
         self._setup_right_click_menus()
+        self._set_theme(self.theme_mode, persist=False)
 
         # Auto-refresh histories when its tab is selected
         nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
@@ -253,6 +226,100 @@ class App(ActionWrappersMixin, tk.Tk):
         self.after(800, self._prompt_backup_on_startup)
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self._bind_global_shortcuts()
+        self.after(100, self._focus_current_tab_primary_input)
+
+    def _bind_global_shortcuts(self):
+        self.bind_all("<Control-f>", self._focus_current_tab_primary_input)
+        self.bind_all("<Control-F>", self._focus_current_tab_primary_input)
+        self.bind_all("<Control-r>", self._refresh_current_tab)
+        self.bind_all("<Control-R>", self._refresh_current_tab)
+        self.bind_all("<Control-b>", lambda _e: self.backup_database())
+        self.bind_all("<Control-B>", lambda _e: self.backup_database())
+        self.bind_all("<Escape>", self._clear_current_tab_search)
+
+    def _get_primary_entry_for_current_tab(self):
+        selected_tab = self.main_notebook.select() if hasattr(self, "main_notebook") else ""
+
+        if selected_tab == str(self.tab_dashboard):
+            return getattr(self, "dashboard_search_entry", None)
+        if selected_tab == str(self.tab_customers):
+            return getattr(self, "customer_search", None)
+        if selected_tab == str(self.tab_trucks):
+            return getattr(self, "truck_search", None)
+        if selected_tab == str(self.tab_contracts):
+            return getattr(self, "contract_search", None)
+        if selected_tab == str(self.tab_histories):
+            return getattr(self, "histories_text", None)
+
+        if selected_tab == str(self.tab_billing) and hasattr(self, "billing_notebook"):
+            sub_selected = self.billing_notebook.select()
+            if sub_selected == str(self.sub_invoices):
+                return getattr(self, "invoice_customer_search", None)
+            if sub_selected == str(self.sub_overdue):
+                return getattr(self, "overdue_search", None)
+            if sub_selected == str(self.sub_statement):
+                return getattr(self, "statement_month", None)
+
+        return None
+
+    def _focus_current_tab_primary_input(self, _event=None):
+        target_widget = self._get_primary_entry_for_current_tab()
+        if not target_widget:
+            return
+        try:
+            target_widget.focus_set()
+            if isinstance(target_widget, (tk.Entry, ttk.Entry)):
+                target_widget.icursor(tk.END)
+        except Exception as exc:
+            logger.debug(f"Failed to focus primary input for current tab: {exc}")
+        return "break"
+
+    def _refresh_current_tab(self, _event=None):
+        selected_tab = self.main_notebook.select() if hasattr(self, "main_notebook") else ""
+        if selected_tab == str(self.tab_dashboard):
+            self.refresh_dashboard()
+        elif selected_tab == str(self.tab_customers):
+            self.refresh_customers()
+        elif selected_tab == str(self.tab_trucks):
+            self.refresh_trucks()
+        elif selected_tab == str(self.tab_contracts):
+            self.refresh_contracts()
+        elif selected_tab == str(self.tab_histories):
+            self.refresh_histories()
+        elif selected_tab == str(self.tab_billing) and hasattr(self, "billing_notebook"):
+            sub_selected = self.billing_notebook.select()
+            if sub_selected == str(self.sub_invoices):
+                self.refresh_invoices()
+            elif sub_selected == str(self.sub_statement):
+                self.refresh_statement()
+            elif sub_selected == str(self.sub_overdue):
+                self.refresh_overdue()
+        return "break"
+
+    def _clear_current_tab_search(self, _event=None):
+        selected_tab = self.main_notebook.select() if hasattr(self, "main_notebook") else ""
+        if selected_tab == str(self.tab_dashboard):
+            self._clear_dashboard_global_search()
+            return "break"
+        if selected_tab == str(self.tab_customers):
+            self._clear_customer_search()
+            return "break"
+        if selected_tab == str(self.tab_trucks):
+            self._clear_truck_search()
+            return "break"
+        if selected_tab == str(self.tab_contracts):
+            self._clear_contract_search()
+            return "break"
+        if selected_tab == str(self.tab_billing) and hasattr(self, "billing_notebook"):
+            sub_selected = self.billing_notebook.select()
+            if sub_selected == str(self.sub_invoices):
+                self._clear_invoice_customer_search()
+                return "break"
+            if sub_selected == str(self.sub_overdue):
+                self._clear_overdue_search()
+                return "break"
+        return None
 
     def _setup_right_click_menus(self):
         self.customer_menu = tk.Menu(self, tearoff=0)
@@ -343,10 +410,26 @@ class App(ActionWrappersMixin, tk.Tk):
             self.dashboard_search_tree.delete(item)
         self._dashboard_search_result_map = {}
 
+        query_plate = re.sub(r"[^a-z0-9]", "", query_l)
+        query_digits = re.sub(r"\D", "", query)
+
         def _matches(field_name: str, candidate: str) -> bool:
             candidate_l = normalize_whitespace(candidate).lower()
             if not candidate_l:
                 return False
+
+            if field_name == "plate":
+                candidate_plate = re.sub(r"[^a-z0-9]", "", candidate_l)
+                if not query_plate or not candidate_plate:
+                    return False
+                return query_plate in candidate_plate
+
+            if field_name == "phone":
+                candidate_digits = re.sub(r"\D", "", candidate)
+                if not query_digits or not candidate_digits:
+                    return False
+                return query_digits in candidate_digits
+
             if field == "name_or_company" and field_name in {"name", "company"}:
                 return query_l in candidate_l
             return query_l in candidate_l and (field == "all" or field == field_name)
@@ -374,6 +457,8 @@ class App(ActionWrappersMixin, tk.Tk):
             iid = self.dashboard_search_tree.insert("", "end", values=(result_type, match_text, detail))
             self._dashboard_search_result_map[iid] = meta
 
+        self._reapply_tree_sort(self.dashboard_search_tree)
+
     def _detect_dashboard_search_field(self, query: str) -> str:
         text = normalize_whitespace(query)
         if not text:
@@ -382,19 +467,19 @@ class App(ActionWrappersMixin, tk.Tk):
         lowered = text.lower()
         digit_count = sum(ch.isdigit() for ch in text)
         has_alpha = any(ch.isalpha() for ch in text)
-        has_digit = digit_count > 0
 
         if lowered.startswith("#") and lowered[1:].isdigit():
-            return "name_or_company"
+            return "all"
         if lowered.startswith("contract ") and lowered.split(" ", 1)[1].isdigit():
-            return "name_or_company"
+            return "all"
 
-        if has_alpha and has_digit:
-            return "plate"
-
-        phone_chars = set("0123456789-+() ")
-        if set(text) <= phone_chars and digit_count >= 3:
+        phone_digits = re.sub(r"\D", "", text)
+        if not has_alpha and len(phone_digits) >= 7:
             return "phone"
+
+        plate_compact = re.sub(r"[^a-z0-9]", "", lowered)
+        if has_alpha and digit_count > 0 and 4 <= len(plate_compact) <= 12:
+            return "plate"
 
         return "name_or_company"
 
@@ -408,6 +493,79 @@ class App(ActionWrappersMixin, tk.Tk):
                 tree.see(iid)
                 return True
         return False
+
+    def _heading_text_without_sort_marker(self, text: str) -> str:
+        return text.removesuffix(" ▲").removesuffix(" ▼")
+
+    def _alphanum_key(self, value: str) -> tuple:
+        normalized = normalize_whitespace(value or "")
+        if not normalized:
+            return (2,)
+
+        numeric = normalized.replace("$", "").replace(",", "")
+        if re.fullmatch(r"-?\d+(\.\d+)?", numeric):
+            return (0, float(numeric))
+
+        parts = re.split(r"(\d+)", normalized.lower())
+        key_parts = []
+        for part in parts:
+            if part == "":
+                continue
+            if part.isdigit():
+                key_parts.append((0, int(part)))
+            else:
+                key_parts.append((1, part))
+        return (1, tuple(key_parts))
+
+    def _sort_tree_column(self, tree: ttk.Treeview, col: str):
+        if not hasattr(self, "_tree_sort_state"):
+            self._tree_sort_state: dict[str, tuple[str, bool]] = {}
+        if not hasattr(self, "_tree_heading_texts"):
+            self._tree_heading_texts: dict[str, dict[str, str]] = {}
+
+        tree_key = str(tree)
+        if tree_key not in self._tree_heading_texts:
+            self._tree_heading_texts[tree_key] = {
+                c: self._heading_text_without_sort_marker(str(tree.heading(c, "text")))
+                for c in tree["columns"]
+            }
+
+        prev_col, prev_rev = self._tree_sort_state.get(tree_key, ("", False))
+        reverse = (not prev_rev) if prev_col == col else False
+        self._tree_sort_state[tree_key] = (col, reverse)
+
+        items = list(tree.get_children(""))
+        items.sort(key=lambda iid: self._alphanum_key(tree.set(iid, col)), reverse=reverse)
+        for idx, iid in enumerate(items):
+            tree.move(iid, "", idx)
+
+        labels = self._tree_heading_texts[tree_key]
+        for c in tree["columns"]:
+            label = labels.get(c, c)
+            if c == col:
+                label += " ▼" if reverse else " ▲"
+            tree.heading(c, text=label)
+
+    def _reapply_tree_sort(self, tree: ttk.Treeview):
+        """Reapply the last saved sort to a tree after it's been refreshed."""
+        if not hasattr(self, "_tree_sort_state"):
+            return
+        tree_key = str(tree)
+        saved_col, saved_rev = self._tree_sort_state.get(tree_key, ("", False))
+        if saved_col and saved_col in tree["columns"]:
+            items = list(tree.get_children(""))
+            items.sort(key=lambda iid: self._alphanum_key(tree.set(iid, saved_col)), reverse=saved_rev)
+            for idx, iid in enumerate(items):
+                tree.move(iid, "", idx)
+            # Update headers with sort markers
+            if not hasattr(self, "_tree_heading_texts"):
+                self._tree_heading_texts = {}
+            labels = self._tree_heading_texts.get(tree_key, {})
+            for c in tree["columns"]:
+                label = labels.get(c, c)
+                if c == saved_col:
+                    label += " ▼" if saved_rev else " ▲"
+                tree.heading(c, text=label)
 
     def _open_dashboard_search_selection(self, _event=None):
         if not hasattr(self, "dashboard_search_tree"):
@@ -445,6 +603,14 @@ class App(ActionWrappersMixin, tk.Tk):
             return
 
         as_of_date = today()
+        if hasattr(self, "dashboard_as_of_entry"):
+            as_of_text = self.dashboard_as_of_entry.get().strip()
+            if as_of_text:
+                parsed = parse_ymd(as_of_text)
+                if not parsed:
+                    messagebox.showerror("Date format error", "Dashboard As-of date must be YYYY-MM-DD.")
+                    return
+                as_of_date = parsed
         month_start = date(as_of_date.year, as_of_date.month, 1)
         next_y, next_m = add_months(as_of_date.year, as_of_date.month, 1)
         month_end = date(next_y, next_m, 1) - timedelta(days=1)
@@ -504,45 +670,84 @@ class App(ActionWrappersMixin, tk.Tk):
             self.billing_notebook.select(self.sub_overdue)
         self.refresh_overdue()
 
+    def _open_statement_tab_from_dashboard(self):
+        self.main_notebook.select(self.tab_billing)
+        if hasattr(self, "billing_notebook") and hasattr(self, "sub_statement"):
+            self.billing_notebook.select(self.sub_statement)
+        self.refresh_statement()
+
     def _configure_ui_rendering(self):
         try:
             self.tk.call("tk", "scaling", self.winfo_fpixels("1i") / 72.0)
         except Exception as e:
             logger.warning(f"Failed to configure TK scaling: {e}")
 
+        palette = THEME_PALETTES.get(self.theme_mode, THEME_PALETTES["light"])
+        self._theme_palette = palette
+
         base_font = FONTS["base"]
         heading_font = FONTS["heading"]
         self.option_add("*Font", base_font)
         self.option_add("*TCombobox*Listbox*Font", base_font)
+        self.option_add("*TCombobox*Listbox*Background", palette["entry_bg"])
+        self.option_add("*TCombobox*Listbox*Foreground", palette["entry_text"])
+        self.option_add("*TCombobox*Listbox*selectBackground", SELECTION_BG)
+        self.option_add("*TCombobox*Listbox*selectForeground", SELECTION_FG)
         style = ttk.Style(self)
-        style.configure(".", font=base_font)
+        try:
+            style.theme_use("clam")
+        except Exception:
+            pass
+        style.configure(".", font=base_font, background=palette["surface_bg"], foreground=palette["text"])
+        style.configure("TFrame", background=palette["surface_bg"])
+        style.configure("TLabel", background=palette["surface_bg"], foreground=palette["text"])
+        style.configure("TLabelframe", background=palette["surface_bg"], bordercolor=palette["border"])
+        style.configure("TLabelframe.Label", font=heading_font, background=palette["surface_bg"], foreground=palette["text"])
         style.configure("TNotebook.Tab", font=base_font, padding=(24, 14, 24, 14), anchor="center")
-        style.configure("TNotebook", tabmargins=(8, 4, 8, 0))
-        style.configure("MainTabs.TNotebook", tabmargins=(8, 4, 8, 0), borderwidth=2, relief="solid")
+        style.configure("TNotebook", tabmargins=(8, 4, 8, 0), background=palette["surface_bg"], bordercolor=palette["border"])
+        style.configure("MainTabs.TNotebook", tabmargins=(8, 4, 8, 0), borderwidth=2, relief="solid", background=palette["surface_bg"], bordercolor=palette["border"])
         style.configure("MainTabs.TNotebook.Tab", font=base_font, padding=(24, 14, 24, 14), borderwidth=1)
         style.map(
             "MainTabs.TNotebook.Tab",
-            background=[("selected", "#ffffff"), ("active", "#f1f5fb"), ("!selected", "#e6ebf2")],
-            foreground=[("selected", "#111111"), ("!selected", "#333333")],
+            background=[("selected", palette["tab_selected_bg"]), ("active", palette["tab_active_bg"]), ("!selected", palette["tab_idle_bg"])],
+            foreground=[("selected", palette["tab_selected_text"]), ("!selected", palette["tab_idle_text"])],
         )
-        style.configure("BillingTabs.TNotebook", tabmargins=(6, 4, 6, 0), borderwidth=2, relief="solid")
+        style.configure("BillingTabs.TNotebook", tabmargins=(6, 4, 6, 0), borderwidth=2, relief="solid", background=palette["surface_bg"], bordercolor=palette["border"])
         style.configure("BillingTabs.TNotebook.Tab", font=base_font, padding=(20, 12, 20, 12), borderwidth=1)
         style.map(
             "BillingTabs.TNotebook.Tab",
-            background=[("selected", "#ffffff"), ("active", "#f1f5fb"), ("!selected", "#e6ebf2")],
-            foreground=[("selected", "#111111"), ("!selected", "#333333")],
+            background=[("selected", palette["tab_selected_bg"]), ("active", palette["tab_active_bg"]), ("!selected", palette["tab_idle_bg"])],
+            foreground=[("selected", palette["tab_selected_text"]), ("!selected", palette["tab_idle_text"])],
         )
-        style.configure("TEntry", font=base_font, padding=(6, 6, 6, 6))
-        style.configure("TCombobox", font=base_font, padding=(6, 4, 6, 4))
-        style.configure("TButton", font=base_font, padding=(12, 8))
-        style.configure("TLabelframe.Label", font=heading_font)
-        style.configure("Treeview", font=base_font, rowheight=TREE_ROW_HEIGHT)
-        style.configure("Treeview.Heading", font=heading_font, padding=(8, 8, 8, 8))
+        style.configure("TEntry", font=base_font, padding=(6, 6, 6, 6), fieldbackground=palette["entry_bg"], foreground=palette["entry_text"])
+        style.map("TEntry", fieldbackground=[("disabled", palette["entry_disabled_bg"]), ("!disabled", palette["entry_bg"])])
+        style.configure("TCombobox", font=base_font, padding=(6, 4, 6, 4), fieldbackground=palette["entry_bg"], foreground=palette["entry_text"], background=palette["panel_bg"])
+        style.map(
+            "TCombobox",
+            fieldbackground=[
+                ("readonly", palette["entry_bg"]),
+                ("disabled", palette["entry_disabled_bg"]),
+                ("!disabled", palette["entry_bg"]),
+            ],
+            foreground=[
+                ("readonly", palette["entry_text"]),
+                ("disabled", palette["muted_text"]),
+                ("!disabled", palette["entry_text"]),
+            ],
+            selectbackground=[("readonly", SELECTION_BG), ("!readonly", SELECTION_BG)],
+            selectforeground=[("readonly", SELECTION_FG), ("!readonly", SELECTION_FG)],
+            arrowcolor=[("disabled", palette["muted_text"]), ("!disabled", palette["text"])],
+        )
+        style.configure("TButton", font=base_font, padding=(12, 8), background=palette["panel_bg"], foreground=palette["text"])
+        style.map("TButton", background=[("active", palette["tab_active_bg"]), ("pressed", palette["tab_selected_bg"])], foreground=[("disabled", palette["muted_text"]), ("!disabled", palette["text"])])
+        style.configure("Treeview", font=base_font, rowheight=TREE_ROW_HEIGHT, background=palette["tree_bg"], fieldbackground=palette["tree_bg"], foreground=palette["tree_fg"])
+        style.configure("Treeview.Heading", font=heading_font, padding=(8, 8, 8, 8), background=palette["tree_heading_bg"], foreground=palette["tree_heading_fg"])
+        style.map("Treeview.Heading", background=[("active", palette["tab_active_bg"])], foreground=[("active", palette["tab_selected_text"])])
         style.configure("Billing.Treeview", font=(base_font[0], base_font[1] + 1), rowheight=max(TREE_ROW_HEIGHT + 2, 46))
         style.configure("Billing.Treeview.Heading", font=(heading_font[0], heading_font[1] + 1, "bold"), padding=(10, 10, 10, 10))
-        style.configure("BillingControls.TLabelframe", borderwidth=2, relief="solid")
-        style.configure("BillingControls.TLabelframe.Label", font=(heading_font[0], heading_font[1], "bold"))
-        style.configure("BillingAction.TFrame", borderwidth=2, relief="solid")
+        style.configure("BillingControls.TLabelframe", borderwidth=2, relief="solid", background=palette["surface_bg"], bordercolor=palette["border"])
+        style.configure("BillingControls.TLabelframe.Label", font=(heading_font[0], heading_font[1], "bold"), background=palette["surface_bg"], foreground=palette["text"])
+        style.configure("BillingAction.TFrame", borderwidth=2, relief="solid", background=palette["surface_bg"], bordercolor=palette["border"])
         style.map(
             "Treeview",
             foreground=[("selected", SELECTION_FG)],
@@ -555,24 +760,106 @@ class App(ActionWrappersMixin, tk.Tk):
                  foreground=[("active", "#bf360c"), ("pressed", "#a52714")])
         # Prominent green button used for Record Payment
         style.configure("Payment.TButton", font=(base_font[0], base_font[1] + 1, "bold"),
-                       padding=(18, 12), foreground="#2e7d32")
+                       padding=(18, 12), foreground=palette["payment_button_fg"])
         style.map("Payment.TButton",
-                 foreground=[("active", "#1b5e20"), ("pressed", "#1b5e20")])
+                 foreground=[("active", palette["payment_button_active_fg"]), ("pressed", palette["payment_button_active_fg"])])
         style.configure("CreateContract.TButton", font=(base_font[0], base_font[1] + 2, "bold"),
-                   padding=(20, 12), foreground="#2e7d32")
+                   padding=(20, 12), foreground=palette["create_button_fg"])
         style.map("CreateContract.TButton",
-             foreground=[("active", "#1b5e20"), ("pressed", "#1b5e20")])
+             foreground=[("active", palette["create_button_active_fg"]), ("pressed", palette["create_button_active_fg"])])
         style.configure("ViewTrucks.TButton", font=(base_font[0], base_font[1] + 6, "bold"),
-                   padding=(26, 24), foreground="#2e7d32")
+                   padding=(26, 24), foreground=palette["view_trucks_button_fg"])
         style.map("ViewTrucks.TButton",
-             foreground=[("active", "#1b5e20"), ("pressed", "#1b5e20")])
+             foreground=[("active", palette["view_trucks_button_active_fg"]), ("pressed", palette["view_trucks_button_active_fg"])])
+
+    def _normalize_theme_mode(self, value: str) -> str:
+        candidate = str(value or "light").strip().lower()
+        return candidate if candidate in THEME_PALETTES else "light"
+
+    def _set_theme(self, mode: str, persist: bool = True):
+        new_mode = self._normalize_theme_mode(mode)
+        self.theme_mode = new_mode
+        self._theme_palette = THEME_PALETTES[new_mode]
+        self._configure_ui_rendering()
+        self.configure(background=self._theme_palette["root_bg"])
+        self._apply_theme_to_widget_tree(self)
+        self._refresh_tree_theme_tags()
+        self._apply_menu_theme()
+        if hasattr(self, "_apply_invoice_tree_visual_tags"):
+            self._apply_invoice_tree_visual_tags()
+        if persist and hasattr(self, "_app_settings"):
+            self._app_settings["theme_mode"] = new_mode
+            self._save_app_settings()
+
+        if hasattr(self, "theme_selectors"):
+            selector_value = "Dark" if new_mode == "dark" else "Light"
+            for selector in list(self.theme_selectors):
+                if not selector.winfo_exists():
+                    self.theme_selectors.remove(selector)
+                    continue
+                if selector.get().strip() != selector_value:
+                    selector.set(selector_value)
+
+    def _apply_theme_to_widget_tree(self, root: tk.Widget):
+        palette = self._theme_palette
+        try:
+            if isinstance(root, tk.Text):
+                root.configure(bg=palette["text_widget_bg"], fg=palette["text_widget_fg"], insertbackground=palette["text_widget_fg"])
+            elif isinstance(root, ttk.Label) and self.theme_mode == "dark":
+                try:
+                    fg = str(root.cget("foreground")).strip().lower()
+                except Exception:
+                    fg = ""
+                if fg in {"#777777", "#666666", "#888888", "#999999", "#aaaaaa", "gray", "grey"}:
+                    root.configure(foreground=palette["muted_text"])
+            elif isinstance(root, (tk.Frame, tk.Label, tk.LabelFrame, tk.Toplevel, tk.Tk)) and not isinstance(root, ttk.Widget):
+                config_kwargs = {"bg": palette["surface_bg"]}
+                try:
+                    root.cget("fg")
+                    config_kwargs["fg"] = palette["text"]
+                except Exception:
+                    pass
+                root.configure(**config_kwargs)
+        except Exception as exc:
+            logger.debug(f"Failed to apply theme on widget {root}: {exc}")
+
+        for child in root.winfo_children():
+            self._apply_theme_to_widget_tree(child)
+
+    def _apply_menu_theme(self):
+        palette = self._theme_palette
+        for menu_name in ("customer_menu", "truck_menu", "contract_menu", "invoice_menu", "overdue_menu"):
+            if not hasattr(self, menu_name):
+                continue
+            menu_widget = getattr(self, menu_name)
+            try:
+                menu_widget.configure(
+                    background=palette["menu_bg"],
+                    foreground=palette["menu_fg"],
+                    activebackground=palette["menu_active_bg"],
+                    activeforeground=palette["menu_active_fg"],
+                )
+            except Exception as exc:
+                logger.debug(f"Failed to apply menu theme on {menu_name}: {exc}")
+
+    def _refresh_tree_theme_tags(self):
+        for tree_name in ("customer_tree", "truck_tree", "contract_tree", "invoice_tree", "overdue_tree"):
+            if hasattr(self, tree_name):
+                self._init_tree_striping(getattr(self, tree_name))
+
+        if hasattr(self, "invoice_tree"):
+            palette = self._theme_palette
+            self.invoice_tree.tag_configure("invoice_parent_expanded", background=palette["invoice_parent_expanded"])
+            self.invoice_tree.tag_configure("invoice_child_even", background=palette["invoice_child_even"])
+            self.invoice_tree.tag_configure("invoice_child_odd", background=palette["invoice_child_odd"])
 
     def _init_tree_striping(self, tree: ttk.Treeview):
-        tree.tag_configure("row_even", background=TREE_ALT_ROW_COLORS[0])
-        tree.tag_configure("row_odd", background=TREE_ALT_ROW_COLORS[1])
-        tree.tag_configure("bal_zero", foreground="#2e7d32")
-        tree.tag_configure("bal_no_contract", foreground="#b58900")
-        tree.tag_configure("bal_due", foreground="#b00020")
+        palette = self._theme_palette
+        tree.tag_configure("row_even", background=palette["stripe_even"])
+        tree.tag_configure("row_odd", background=palette["stripe_odd"])
+        tree.tag_configure("bal_zero", foreground=palette["status_bal_zero"], font=FONTS["tree_bold"])
+        tree.tag_configure("bal_no_contract", foreground=palette["status_bal_no_contract"], font=FONTS["tree_bold"])
+        tree.tag_configure("bal_due", foreground=palette["status_bal_due"], font=FONTS["tree_bold"])
 
     def _row_stripe_tag(self, index: int) -> str:
         return "row_even" if index % 2 == 0 else "row_odd"
@@ -767,11 +1054,27 @@ class App(ActionWrappersMixin, tk.Tk):
             selection = "EN"
         self._set_language("zh" if selection == "中文" else "en")
 
+    def _on_theme_changed(self, _event=None):
+        if _event is not None and hasattr(_event, "widget") and _event.widget:
+            selection = _event.widget.get().strip()
+        elif self.theme_selectors:
+            selection = self.theme_selectors[0].get().strip()
+        else:
+            selection = "Light"
+        self._set_theme("dark" if selection.lower() == "dark" else "light")
+
     def _create_language_selector(self, parent: tk.Misc, width: int = 6) -> ttk.Combobox:
         selector = ttk.Combobox(parent, state="readonly", values=["EN", "中文"], width=width)
         selector.set("中文" if self.current_language == "zh" else "EN")
         selector.bind("<<ComboboxSelected>>", self._on_language_changed)
         self.language_selectors.append(selector)
+        return selector
+
+    def _create_theme_selector(self, parent: tk.Misc, width: int = 8) -> ttk.Combobox:
+        selector = ttk.Combobox(parent, state="readonly", values=["Light", "Dark"], width=width)
+        selector.set("Dark" if self.theme_mode == "dark" else "Light")
+        selector.bind("<<ComboboxSelected>>", self._on_theme_changed)
+        self.theme_selectors.append(selector)
         return selector
 
     # ---------------------------
@@ -1027,36 +1330,6 @@ class App(ActionWrappersMixin, tk.Tk):
         self._truck_filter_customer_id = None
         self.refresh_contracts()
 
-    def _select_contract_in_invoice_tree(self, contract_id: int) -> bool:
-        target = str(contract_id)
-        found_iid = None
-
-        for parent_iid in self.invoice_tree.get_children(""):
-            for child_iid in self.invoice_tree.get_children(parent_iid):
-                values = self.invoice_tree.item(child_iid, "values")
-                if values and str(values[0]).strip() == target:
-                    self.invoice_tree.item(parent_iid, open=True)
-                    self._update_invoice_parent_label(parent_iid)
-                    found_iid = child_iid
-                    break
-            if found_iid:
-                break
-
-        if not found_iid:
-            for iid in self.invoice_tree.get_children(""):
-                values = self.invoice_tree.item(iid, "values")
-                if values and str(values[0]).strip() == target:
-                    found_iid = iid
-                    break
-
-        if not found_iid:
-            return False
-
-        self.invoice_tree.selection_set(found_iid)
-        self.invoice_tree.focus(found_iid)
-        self.invoice_tree.see(found_iid)
-        return True
-
     # ---------------------------
     # Invoices tab
     # ---------------------------
@@ -1171,7 +1444,7 @@ class App(ActionWrappersMixin, tk.Tk):
                     return int(val)
                 except ValueError:
                     return 0
-            return val.lower()
+            return self._alphanum_key(val)
 
         # Only sort parent (customer) rows; children stay with their parents
         items = list(tree.get_children(""))
@@ -1197,11 +1470,6 @@ class App(ActionWrappersMixin, tk.Tk):
             if c == col:
                 label += " ▼" if self._invoice_sort_rev else " ▲"
             tree.heading(c, text=label)
-
-    @trace
-    def generate_invoices(self):
-        self.refresh_invoices()
-        messagebox.showinfo("Recalculated", "Outstanding balances recalculated for selected date.")
 
     # ---------------------------
     # Overdue tab
@@ -1230,11 +1498,36 @@ class App(ActionWrappersMixin, tk.Tk):
             return None
 
     def _record_payment_for_selected_overdue(self):
-        contract_id = self._get_selected_overdue_contract_id()
-        if not contract_id:
+        if not hasattr(self, "overdue_tree"):
+            return
+        sel = self.overdue_tree.selection()
+        if not sel:
             messagebox.showwarning("No Selection", "Select an overdue row first.")
             return
-        self._open_payment_form_for_contract(contract_id)
+
+        values = self.overdue_tree.item(sel[0], "values")
+        if not values or len(values) < 5:
+            messagebox.showerror("Invalid selection", "Could not read selected overdue row.")
+            return
+
+        try:
+            contract_id = int(str(values[2]).strip())
+        except (ValueError, TypeError):
+            messagebox.showerror("Invalid selection", "Selected contract ID is invalid.")
+            return
+
+        scope_value = str(values[4]).strip()
+        plate_label = None if scope_value.lower() in {"(customer-level)", "customer-level"} else scope_value
+
+        as_of_date = None
+        if hasattr(self, "overdue_as_of"):
+            as_of_text = self.overdue_as_of.get().strip()
+            if as_of_text:
+                parsed = parse_ymd(as_of_text)
+                if parsed:
+                    as_of_date = parsed
+
+        self._open_payment_form_for_contract(contract_id, plate_label, as_of_date)
 
     def _generate_invoice_pdf_for_selected_overdue(self):
         contract_id = self._get_selected_overdue_contract_id()
@@ -1256,6 +1549,9 @@ class App(ActionWrappersMixin, tk.Tk):
         elif selected == str(self.sub_invoices):
             self._sync_search_boxes_from_truck_search()
             self.refresh_invoices()
+        elif selected == str(self.sub_statement):
+            self.refresh_statement()
+        self.after_idle(self._focus_current_tab_primary_input)
 
     # ---------------------------
     # Shared dropdown reloaders
@@ -1356,9 +1652,17 @@ class App(ActionWrappersMixin, tk.Tk):
         if self.main_notebook.select() == str(self.tab_contracts):
             self._sync_search_boxes_from_truck_search()
             self.refresh_contracts()
+        self.after_idle(self._focus_current_tab_primary_input)
 
     @trace
-    def on_close(self):
+    def on_close(self, force: bool = False):
+        if not force:
+            should_close = messagebox.askyesno(
+                "Exit Application",
+                "Close Changsheng now?\n\nAny open changes are saved immediately in this app.",
+            )
+            if not should_close:
+                return
         try:
             self.db.close()
         except Exception as e:
@@ -1369,4 +1673,8 @@ class App(ActionWrappersMixin, tk.Tk):
 if __name__ == "__main__":
     enable_windows_dpi_awareness()
     app = App()
-    app.mainloop()
+    try:
+        app.mainloop()
+    except KeyboardInterrupt:
+        logger.info("KeyboardInterrupt received, closing application gracefully.")
+        app.on_close(force=True)

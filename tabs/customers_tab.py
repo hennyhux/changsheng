@@ -19,6 +19,7 @@ def build_customers_tab(app, frame):
     app.customer_search.grid(row=0, column=1, sticky="w", padx=6)
     app.customer_search.bind("<Return>", lambda e: app.refresh_customers())
     ttk.Button(top, text="Find", command=app.refresh_customers).grid(row=0, column=2, padx=6)
+    ttk.Button(top, text="Clear", command=app._clear_customer_search).grid(row=0, column=3, padx=6)
     ttk.Button(top, text="Delete Selected", command=app.delete_customer).grid(row=0, column=4, padx=6)
     data_frame = ttk.Frame(top)
     data_frame.grid(row=0, column=5, columnspan=3, padx=6, sticky="ew")
@@ -40,12 +41,17 @@ def build_customers_tab(app, frame):
         "trucks": "Trucks Parked",
     }
     for c in cols:
-        app.customer_tree.heading(c, text=customer_headings[c], anchor="center")
+        app.customer_tree.heading(
+            c,
+            text=customer_headings[c],
+            anchor="center",
+            command=lambda _c=c: app._sort_tree_column(app.customer_tree, _c),
+        )
     app.customer_tree.column("id", width=100, anchor="center", stretch=False)
     app.customer_tree.column("name", width=360, anchor="center", stretch=False)
     app.customer_tree.column("phone", width=220, anchor="center", stretch=False)
     app.customer_tree.column("company", width=300, anchor="center", stretch=False)
-    app.customer_tree.column("notes", width=520, anchor="center", stretch=False)
+    app.customer_tree.column("notes", width=520, anchor="center", stretch=True)
     app.customer_tree.column("outstanding", width=190, anchor="center", stretch=False)
     app.customer_tree.column("trucks", width=220, anchor="center", stretch=False)
     app.customer_tree.grid(row=1, column=0, sticky="nsew", padx=10)
@@ -54,7 +60,19 @@ def build_customers_tab(app, frame):
     customer_vsb.grid(row=1, column=1, sticky="ns", padx=(0, 10))
     app._init_tree_striping(app.customer_tree)
     app.customer_tree.bind("<<TreeviewSelect>>", app._on_customer_tree_select)
-    app.customer_tree.bind("<Double-1>", lambda _e: app.edit_selected_customer())
+
+    def _on_customer_tree_double_click(event):
+        region = app.customer_tree.identify("region", event.x, event.y)
+        if region != "cell":
+            return
+        row_id = app.customer_tree.identify_row(event.y)
+        if not row_id:
+            return
+        app.customer_tree.selection_set(row_id)
+        app.customer_tree.focus(row_id)
+        app.edit_selected_customer()
+
+    app.customer_tree.bind("<Double-1>", _on_customer_tree_double_click)
 
     form = ttk.LabelFrame(frame, text="Add Customer", padding="10")
     form.grid(row=2, column=0, sticky="ew", padx=10, pady=10)

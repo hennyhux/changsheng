@@ -116,13 +116,31 @@ def get_default_invoice_filename(customer_name: str) -> str:
 
 
 def _resolve_logo_path() -> Path | None:
+    candidates: list[Path] = []
+
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         base_dir = Path(getattr(sys, "_MEIPASS"))
+        candidates.extend(
+            [
+                base_dir / "app" / "logo.png",
+                base_dir / "logo.png",
+            ]
+        )
     else:
-        base_dir = Path(__file__).resolve().parent
+        module_dir = Path(__file__).resolve().parent
+        project_root = module_dir.parent
+        candidates.extend(
+            [
+                project_root / "app" / "logo.png",
+                module_dir / "app" / "logo.png",
+                Path.cwd() / "app" / "logo.png",
+            ]
+        )
 
-    logo_path = base_dir / "app" / "logo.png"
-    return logo_path if logo_path.exists() else None
+    for logo_path in candidates:
+        if logo_path.exists():
+            return logo_path
+    return None
 
 
 def _build_contracts_table(invoice_data: PdfInvoiceData) -> Table:
@@ -163,10 +181,13 @@ def _build_contracts_table(invoice_data: PdfInvoiceData) -> Table:
 
 
 def _build_summary_table(invoice_data: PdfInvoiceData) -> Table:
+    # Format the Total Outstanding label with as-of date
+    outstanding_label = f"{PDF_HEADERS['summary'][2]} ({PDF_TEXT['outstanding_as_of']} {invoice_data.as_of_date.isoformat()})"
+    
     summary_data = [
         [PDF_HEADERS["summary"][0], f"${invoice_data.total_expected:.2f}"],
         [PDF_HEADERS["summary"][1], f"${invoice_data.total_paid:.2f}"],
-        [PDF_HEADERS["summary"][2], f"${invoice_data.total_outstanding:.2f}"],
+        [outstanding_label, f"${invoice_data.total_outstanding:.2f}"],
         [
             PDF_HEADERS["summary"][3],
             invoice_data.next_due_date.isoformat() if invoice_data.next_due_date else PDF_TEXT["dash"],
@@ -177,9 +198,11 @@ def _build_summary_table(invoice_data: PdfInvoiceData) -> Table:
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, -1), rl_colors.HexColor(PDF_COLORS["summary_bg"])),
+                ("BACKGROUND", (0, 2), (-1, 2), rl_colors.HexColor(PDF_COLORS["summary_outstanding_bg"])),
                 ("TEXTCOLOR", (0, 0), (-1, -1), rl_colors.HexColor(PDF_COLORS["summary_text"])),
                 ("TEXTCOLOR", (1, 2), (1, 2), rl_colors.HexColor(PDF_COLORS["summary_outstanding"])),
                 ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+                ("FONTNAME", (0, 2), (-1, 2), "Helvetica-Bold"),
                 ("FONTSIZE", (0, 0), (-1, -1), PDF_FONTS["table_body_size"]),
                 ("ALIGN", (1, 0), (1, -1), "RIGHT"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 8),
