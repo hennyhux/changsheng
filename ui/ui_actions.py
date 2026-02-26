@@ -3,14 +3,16 @@ from __future__ import annotations
 import csv
 import logging
 import sqlite3
+import threading
 import tkinter as tk
 from datetime import date, datetime, timedelta
+from time import perf_counter
 from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING, Any, Callable
 
 from utils.billing_date_utils import elapsed_months_inclusive, now_iso, parse_ym, parse_ymd, today, ym
 from dialogs.contract_edit_dialog import open_contract_edit_dialog
-from core.app_logging import trace, log_ux_action
+from core.app_logging import trace, log_ux_action, get_trace_logger
 from core.error_handler import safe_ui_action, safe_ui_action_returning
 from dialogs.import_preview_dialog import show_import_preview
 from dialogs.payment_popup import show_payment_popup
@@ -31,6 +33,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("changsheng_app")
+trace_logger = get_trace_logger()
 
 
 @safe_ui_action("Backup Database")
@@ -1469,12 +1472,19 @@ def refresh_contracts_action(
     get_contract_outstanding_as_of_cb: Callable[[int, date], float],
     outstanding_tag_from_amount_cb: Callable[[float], str],
     customer_filter_id: int | None = None,
+    refresh_dependents: bool = True,
 ) -> None:
     query_text = app.contract_search.get().strip().lower() if hasattr(app, "contract_search") else ""
-    for item in app.contract_tree.get_children():
-        app.contract_tree.delete(item)
+    existing_items = app.contract_tree.get_children()
+    if existing_items:
+        app.contract_tree.delete(*existing_items)
 
     rows = db.get_contracts_for_grid(limit=500)
+    as_of = today()
+    paid_rows = db.get_paid_totals_by_contract_as_of(as_of.isoformat())
+    paid_by_contract = {int(row["contract_id"]): float(row["paid_total"]) for row in paid_rows}
+
+    visible_row_index = 0
 
     for row in rows:
         if customer_filter_id is not None and int(row["customer_id"]) != int(customer_filter_id):
@@ -1487,13 +1497,21 @@ def refresh_contracts_action(
         if query_text and query_text not in customer_name.lower():
             continue
 
-        outstanding_amt = get_contract_outstanding_as_of_cb(int(row["contract_id"]), today())
-        row_index = len(app.contract_tree.get_children())
+        contract_id = int(row["contract_id"])
+        start_date = parse_ymd(str(row["start_date"]))
+        end_date = parse_ymd(str(row["end_date"])) if row["end_date"] else None
+        if start_date:
+            effective_end = min(end_date, as_of) if end_date else as_of
+            expected = float(row["monthly_rate"]) * elapsed_months_inclusive(start_date, effective_end)
+            outstanding_amt = expected - paid_by_contract.get(contract_id, 0.0)
+        else:
+            outstanding_amt = 0.0
+
         app.contract_tree.insert(
             "",
             "end",
             values=(
-                row["contract_id"],
+                contract_id,
                 status_display,
                 customer_name,
                 scope,
@@ -1502,12 +1520,14 @@ def refresh_contracts_action(
                 row["end_date"] or "",
                 f"${outstanding_amt:.2f}",
             ),
-            tags=(row_stripe_tag_cb(row_index), outstanding_tag_from_amount_cb(outstanding_amt)),
+            tags=(row_stripe_tag_cb(visible_row_index), outstanding_tag_from_amount_cb(outstanding_amt)),
         )
+        visible_row_index += 1
 
     app._reapply_tree_sort(app.contract_tree)
-    app.refresh_invoices()
-    app.refresh_overdue()
+    if refresh_dependents:
+        app.refresh_invoices()
+        app.refresh_overdue()
 
 
 @safe_ui_action("Refresh Customers")
@@ -1524,23 +1544,31 @@ def refresh_customers_action(
         show_invalid_cb("Search text must be 80 characters or fewer.")
         return
 
-    for item in app.customer_tree.get_children():
-        app.customer_tree.delete(item)
+    existing_items = app.customer_tree.get_children()
+    if existing_items:
+        app.customer_tree.delete(*existing_items)
 
     rows = db.get_customers_with_truck_count(q=query_text, limit=200)
     contracts = db.get_contracts_for_grid(limit=5000)
-    outstanding_by_customer: dict[str, float] = {}
+    as_of = today()
+    paid_rows = db.get_paid_totals_by_contract_as_of(as_of.isoformat())
+    paid_by_contract = {int(row["contract_id"]): float(row["paid_total"]) for row in paid_rows}
+
+    outstanding_by_customer_id: dict[int, float] = {}
     for contract in contracts:
-        customer_name = str(contract["customer_name"] or "")
-        if not customer_name:
+        customer_id = int(contract["customer_id"])
+        start_date = parse_ymd(str(contract["start_date"]))
+        if not start_date:
             continue
         contract_id = int(contract["contract_id"])
-        outstanding = get_contract_outstanding_as_of_cb(contract_id, today())
-        outstanding_by_customer[customer_name] = outstanding_by_customer.get(customer_name, 0.0) + outstanding
+        end_date = parse_ymd(str(contract["end_date"])) if contract["end_date"] else None
+        effective_end = min(end_date, as_of) if end_date else as_of
+        expected = float(contract["monthly_rate"]) * elapsed_months_inclusive(start_date, effective_end)
+        outstanding = expected - paid_by_contract.get(contract_id, 0.0)
+        outstanding_by_customer_id[customer_id] = outstanding_by_customer_id.get(customer_id, 0.0) + outstanding
 
-    for row in rows:
-        customer_outstanding = outstanding_by_customer.get(str(row["name"]), 0.0)
-        row_index = len(app.customer_tree.get_children())
+    for row_index, row in enumerate(rows):
+        customer_outstanding = outstanding_by_customer_id.get(int(row["id"]), 0.0)
         app.customer_tree.insert(
             "",
             "end",
@@ -1576,8 +1604,9 @@ def refresh_trucks_action(
         show_invalid_cb("Search text must be 80 characters or fewer.")
         return
 
-    for item in app.truck_tree.get_children():
-        app.truck_tree.delete(item)
+    existing_items = app.truck_tree.get_children()
+    if existing_items:
+        app.truck_tree.delete(*existing_items)
 
     rows = db.get_trucks_with_customer(
         q=query_text if query_text else None,
@@ -1585,16 +1614,25 @@ def refresh_trucks_action(
         customer_id=customer_filter_id,
         search_mode=truck_search_mode,
     )
+    as_of = today()
+    paid_rows = db.get_paid_totals_by_contract_as_of(as_of.isoformat())
+    paid_by_contract = {int(row["contract_id"]): float(row["paid_total"]) for row in paid_rows}
 
-    for row in rows:
+    for row_index, row in enumerate(rows):
         outstanding_text = "NO CONTRACT"
         contract_row = db.get_preferred_contract_for_truck(int(row["id"]))
         if contract_row:
             contract_id = int(contract_row["contract_id"])
-            outstanding_amt = get_contract_outstanding_as_of_cb(contract_id, today())
+            start_date = parse_ymd(str(contract_row["start_date"]))
+            end_date = parse_ymd(str(contract_row["end_date"])) if contract_row["end_date"] else None
+            if start_date:
+                effective_end = min(end_date, as_of) if end_date else as_of
+                expected = float(contract_row["monthly_rate"]) * elapsed_months_inclusive(start_date, effective_end)
+                outstanding_amt = expected - paid_by_contract.get(contract_id, 0.0)
+            else:
+                outstanding_amt = 0.0
             outstanding_text = f"${outstanding_amt:.2f}"
 
-        row_index = len(app.truck_tree.get_children())
         app.truck_tree.insert(
             "",
             "end",
@@ -1836,8 +1874,9 @@ def refresh_overdue_action(
 ) -> None:
     if not hasattr(app, "overdue_tree"):
         return
-    for item in app.overdue_tree.get_children():
-        app.overdue_tree.delete(item)
+    existing_items = app.overdue_tree.get_children()
+    if existing_items:
+        app.overdue_tree.delete(*existing_items)
 
     as_of_text = app.overdue_as_of.get().strip() if hasattr(app, "overdue_as_of") else today().isoformat()
     as_of = parse_ymd_cb(as_of_text)
@@ -1847,7 +1886,10 @@ def refresh_overdue_action(
 
     rows = db.get_contracts_with_customer_plate_for_overdue()
     as_of_month = ym_cb(as_of)
+    paid_rows = db.get_paid_totals_by_contract_as_of(as_of.isoformat())
+    paid_by_contract = {int(row["contract_id"]): float(row["paid_total"]) for row in paid_rows}
     query_l = normalize_whitespace(search_query).lower()
+    visible_row_index = 0
 
     for row in rows:
         customer_name = str(row["customer_name"] or "")
@@ -1866,12 +1908,11 @@ def refresh_overdue_action(
         effective_end = min(end_date, as_of) if end_date else as_of
         months_elapsed = elapsed_months_inclusive(start_date, effective_end)
         expected = float(row["monthly_rate"]) * months_elapsed
-        paid = db.get_paid_total_for_contract_as_of(int(row["contract_id"]), as_of.isoformat())
+        paid = paid_by_contract.get(int(row["contract_id"]), 0.0)
         bal = expected - paid
 
         if bal > 0.01:
             scope = plate if plate else "(customer-level)"
-            row_index = len(app.overdue_tree.get_children())
             app.overdue_tree.insert(
                 "",
                 "end",
@@ -1885,8 +1926,9 @@ def refresh_overdue_action(
                     f"${paid:.2f}",
                     f"${bal:.2f}",
                 ),
-                tags=(row_stripe_tag_cb(row_index), outstanding_tag_from_amount_cb(bal)),
+                tags=(row_stripe_tag_cb(visible_row_index), outstanding_tag_from_amount_cb(bal)),
             )
+            visible_row_index += 1
 
     app._reapply_tree_sort(app.overdue_tree)
 
@@ -2115,18 +2157,16 @@ def generate_customer_invoice_pdf_for_customer_id_action(
     reportlab_available_cb: Callable[[], bool],
     render_invoice_pdf_cb: Callable[[str, Any], None],
 ) -> None:
-    invoice_data = build_pdf_invoice_data_cb(db, customer_id, datetime.now().date(), payments_limit=5)
-    if not invoice_data:
-        messagebox.showerror("Not Found", f"Customer ID {customer_id} not found.")
-        return
-
-    customer_name = invoice_data.customer_name
-
     if not reportlab_available_cb():
         messagebox.showerror("Missing Dependency", "reportlab is required to generate PDFs.\nInstall with: pip install reportlab")
         return
 
     try:
+        customer_name = f"customer_{customer_id}"
+        customer_row = db.get_customer_basic_by_id(customer_id)
+        if customer_row and customer_row["name"]:
+            customer_name = str(customer_row["name"])
+
         file_path = filedialog.asksaveasfilename(
             title=f"Save Invoice PDF for {customer_name}",
             defaultextension=".pdf",
@@ -2136,10 +2176,63 @@ def generate_customer_invoice_pdf_for_customer_id_action(
         if not file_path:
             return
 
-        render_invoice_pdf_cb(file_path, invoice_data)
-        messagebox.showinfo("Success", f"Invoice PDF saved to:\n{file_path}")
-        app.refresh_histories()
+        if getattr(app, "_pdf_export_in_progress", False):
+            messagebox.showinfo("PDF Generation", "A PDF is already being generated. Please wait.")
+            return
+
+        app._pdf_export_in_progress = True
+
+        def _on_complete(success: bool, message: str) -> None:
+            app._pdf_export_in_progress = False
+            if success:
+                messagebox.showinfo("Success", message)
+                app.refresh_histories()
+            else:
+                messagebox.showerror("Error", message)
+
+        def _worker() -> None:
+            worker_db = None
+            try:
+                from data.database_service import DatabaseService
+
+                worker_db = DatabaseService(db.db_path)
+
+                t0 = perf_counter()
+                invoice_data = build_pdf_invoice_data_cb(worker_db, customer_id, datetime.now().date(), payments_limit=5)
+                build_ms = (perf_counter() - t0) * 1000
+
+                if not invoice_data:
+                    app.after(0, lambda: _on_complete(False, f"Customer ID {customer_id} not found."))
+                    return
+
+                t1 = perf_counter()
+                render_invoice_pdf_cb(file_path, invoice_data)
+                render_ms = (perf_counter() - t1) * 1000
+                total_ms = (perf_counter() - t0) * 1000
+
+                trace_logger.debug(
+                    "PDF_TIMING customer_id=%s build_ms=%.2f render_ms=%.2f total_ms=%.2f contracts=%s payments=%s",
+                    customer_id,
+                    build_ms,
+                    render_ms,
+                    total_ms,
+                    len(invoice_data.contracts),
+                    len(invoice_data.recent_payments),
+                )
+
+                app.after(0, lambda: _on_complete(True, f"Invoice PDF saved to:\n{file_path}"))
+            except Exception as exc:
+                app.after(0, lambda: _on_complete(False, f"Could not generate PDF:\n{exc}"))
+            finally:
+                if worker_db is not None:
+                    try:
+                        worker_db.close()
+                    except Exception:
+                        pass
+
+        threading.Thread(target=_worker, daemon=True).start()
     except Exception as exc:
+        app._pdf_export_in_progress = False
         messagebox.showerror("Error", f"Could not generate PDF:\n{exc}")
 
 
@@ -2452,6 +2545,9 @@ def get_contract_outstanding_as_of_action(
 
 @safe_ui_action("Clear Invoice Search")
 def clear_invoice_customer_search_action(app: Any) -> None:
+    if getattr(app, "_invoice_search_after_id", None) is not None:
+        app.after_cancel(app._invoice_search_after_id)
+        app._invoice_search_after_id = None
     if hasattr(app, "invoice_customer_search"):
         app.invoice_customer_search.delete(0, tk.END)
     app.refresh_invoices()

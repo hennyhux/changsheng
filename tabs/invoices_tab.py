@@ -33,6 +33,7 @@ def build_invoices_tab(app, frame):
     app.invoice_customer_search = ttk.Entry(controls, width=22)
     app.invoice_customer_search.grid(row=0, column=7, sticky="w", padx=4, pady=6)
     app.invoice_customer_search.bind("<Return>", lambda _e: app.refresh_invoices())
+    app.invoice_customer_search.bind("<KeyRelease>", app._on_invoice_customer_search_keyrelease)
     ttk.Button(controls, text="Clear", command=app._clear_invoice_customer_search).grid(row=0, column=8, padx=6)
     app.invoice_total_balance_var = tk.StringVar(value="$0.00")
     ttk.Label(controls, text="Total Outstanding:").grid(row=0, column=9, sticky="e", padx=(14, 4), pady=6)

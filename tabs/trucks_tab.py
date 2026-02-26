@@ -24,7 +24,7 @@ def build_trucks_tab(app, frame):
     app._truck_filter_customer_id = None
     ttk.Button(top, text="Find", command=app.refresh_trucks).grid(row=0, column=2, padx=6)
     ttk.Button(top, text="Clear", command=app._clear_truck_search).grid(row=0, column=3, padx=6)
-    ttk.Button(top, text="Delete Selected", command=app.delete_truck).grid(row=0, column=4, padx=6)
+    ttk.Button(top, text="🔴 Delete Selected", command=app.delete_truck).grid(row=0, column=4, padx=6)
     ttk.Button(top, text="💰  Record Payment", command=app.record_payment_for_selected_truck, style="Payment.TButton").grid(row=0, column=5, padx=6)
     ttk.Button(top, text="View Contract History", command=app.view_selected_truck_contract_history).grid(row=0, column=6, padx=6)
 
@@ -179,5 +179,5 @@ def build_trucks_tab(app, frame):
 
     btn_frame = ttk.Frame(form)
     btn_frame.grid(row=0, column=12, rowspan=2, padx=(12, 8), pady=8)
-    ttk.Button(btn_frame, text="Add Truck", command=app.add_truck).pack(ipadx=10, ipady=6)
+    ttk.Button(btn_frame, text="🟢 Add Truck", command=app.add_truck).pack(ipadx=10, ipady=6)
     ttk.Label(btn_frame, text="(Enter in any field)", font=("", 8), foreground="gray").pack()

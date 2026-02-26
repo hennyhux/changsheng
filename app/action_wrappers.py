@@ -194,7 +194,7 @@ class ActionWrappersMixin:
         )
 
     @trace
-    def refresh_contracts(self):
+    def refresh_contracts(self, refresh_dependents: bool = True):
         refresh_contracts_action(
             app=self,
             db=self.db,
@@ -203,6 +203,7 @@ class ActionWrappersMixin:
             get_contract_outstanding_as_of_cb=self._get_contract_outstanding_as_of,
             outstanding_tag_from_amount_cb=self._outstanding_tag_from_amount,
             customer_filter_id=getattr(self, "_truck_filter_customer_id", None),
+            refresh_dependents=refresh_dependents,
         )
 
     @trace

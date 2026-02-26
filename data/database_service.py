@@ -24,6 +24,9 @@ class DatabaseService:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")
+        conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA synchronous = NORMAL;")
+        conn.execute("PRAGMA temp_store = MEMORY;")
         return conn
 
     def _init_db(self) -> None:
@@ -904,6 +907,19 @@ class DatabaseService:
             JOIN invoices i ON i.id = p.invoice_id
             GROUP BY i.contract_id
             """
+        )
+
+    @trace
+    def get_paid_totals_by_contract_as_of(self, as_of_iso: str) -> list[sqlite3.Row]:
+        return self.fetchall(
+            """
+            SELECT i.contract_id, COALESCE(SUM(p.amount), 0) AS paid_total
+            FROM payments p
+            JOIN invoices i ON i.id = p.invoice_id
+            WHERE DATE(p.paid_at) <= ?
+            GROUP BY i.contract_id
+            """,
+            (as_of_iso,),
         )
 
     @trace

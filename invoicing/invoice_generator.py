@@ -208,6 +208,8 @@ def build_pdf_invoice_data(
         return None
 
     contracts = db.get_active_contracts_for_customer_invoice(customer_id)
+    paid_rows = db.get_paid_totals_by_contract_as_of(as_of_date.isoformat())
+    paid_by_contract = {int(r["contract_id"]): float(r["paid_total"]) for r in paid_rows}
     contract_lines: list[PdfContractLine] = []
 
     total_expected = 0.0
@@ -226,7 +228,7 @@ def build_pdf_invoice_data(
 
         months = _elapsed_months_inclusive(start, as_of_date)
         expected = monthly_rate * months
-        paid = db.get_paid_total_for_contract_as_of(int(row["id"]), as_of_date.isoformat())
+        paid = paid_by_contract.get(int(row["id"]), 0.0)
         outstanding = expected - paid
 
         total_expected += expected

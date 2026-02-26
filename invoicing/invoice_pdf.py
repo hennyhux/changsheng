@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, date
+from io import BytesIO
 from pathlib import Path
 import sys
+from time import perf_counter
+from functools import lru_cache
 from typing import Iterable, TYPE_CHECKING
 
 try:
@@ -21,7 +24,10 @@ from core.config import PDF_TEXT, PDF_HEADERS, PDF_COLORS, PDF_FONTS, PDF_LAYOUT
 
 if TYPE_CHECKING:
     from data.database_service import DatabaseService
-from core.app_logging import trace
+from core.app_logging import trace, get_trace_logger
+
+
+_trace_logger = get_trace_logger()
 
 
 @dataclass
@@ -76,7 +82,9 @@ def generate_customer_invoice_pdf(
         as_of_date = datetime.now().date()
     
     # Build invoice data
+    build_t0 = perf_counter()
     invoice_data = build_pdf_invoice_data(db, customer_id, as_of_date, payments_limit)
+    build_ms = (perf_counter() - build_t0) * 1000
     if not invoice_data:
         return PdfGenerationResult(
             success=False,
@@ -85,7 +93,19 @@ def generate_customer_invoice_pdf(
     
     # Render PDF
     try:
+        render_t0 = perf_counter()
         render_invoice_pdf(file_path, invoice_data)
+        render_ms = (perf_counter() - render_t0) * 1000
+        total_ms = build_ms + render_ms
+        _trace_logger.debug(
+            "PDF_TIMING customer_id=%s build_ms=%.2f render_ms=%.2f total_ms=%.2f contracts=%s payments=%s",
+            customer_id,
+            build_ms,
+            render_ms,
+            total_ms,
+            len(invoice_data.contracts),
+            len(invoice_data.recent_payments),
+        )
         return PdfGenerationResult(
             success=True,
             message=f"Invoice PDF saved successfully.",
@@ -141,6 +161,57 @@ def _resolve_logo_path() -> Path | None:
         if logo_path.exists():
             return logo_path
     return None
+
+
+@lru_cache(maxsize=1)
+def _get_cached_logo_path() -> Path | None:
+    return _resolve_logo_path()
+
+
+@lru_cache(maxsize=1)
+def _get_cached_logo_bytes() -> bytes | None:
+    logo_path = _get_cached_logo_path()
+    if not logo_path:
+        return None
+    try:
+        return logo_path.read_bytes()
+    except Exception:
+        return None
+
+
+@lru_cache(maxsize=1)
+def _get_pdf_styles() -> tuple[ParagraphStyle, ParagraphStyle, ParagraphStyle, ParagraphStyle]:
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "Title",
+        parent=styles["Heading1"],
+        fontSize=PDF_FONTS["title_size"],
+        textColor=rl_colors.HexColor(PDF_COLORS["title"]),
+        spaceAfter=6,
+        fontName="Helvetica-Bold",
+    )
+    subtitle_style = ParagraphStyle(
+        "Subtitle",
+        parent=styles["Normal"],
+        fontSize=PDF_FONTS["subtitle_size"],
+        textColor=rl_colors.HexColor(PDF_COLORS["subtitle"]),
+        spaceAfter=10,
+    )
+    section_style = ParagraphStyle(
+        "Section",
+        parent=styles["Heading3"],
+        fontSize=PDF_FONTS["section_size"],
+        textColor=rl_colors.HexColor(PDF_COLORS["section"]),
+        spaceAfter=6,
+    )
+    footer_style = ParagraphStyle(
+        "Footer",
+        parent=styles["Normal"],
+        fontSize=PDF_FONTS["footer_size"],
+        textColor=rl_colors.HexColor(PDF_COLORS["footer"]),
+        alignment=1,
+    )
+    return title_style, subtitle_style, section_style, footer_style
 
 
 def _build_contracts_table(invoice_data: PdfInvoiceData) -> Table:
@@ -267,40 +338,17 @@ def render_invoice_pdf(file_path: str, invoice_data: PdfInvoiceData) -> None:
         rightMargin=PDF_LAYOUT["margin_right"] * rl_inch,
     )
     elements = []
-    styles = getSampleStyleSheet()
-
-    title_style = ParagraphStyle(
-        "Title",
-        parent=styles["Heading1"],
-        fontSize=PDF_FONTS["title_size"],
-        textColor=rl_colors.HexColor(PDF_COLORS["title"]),
-        spaceAfter=6,
-        fontName="Helvetica-Bold",
-    )
-    subtitle_style = ParagraphStyle(
-        "Subtitle",
-        parent=styles["Normal"],
-        fontSize=PDF_FONTS["subtitle_size"],
-        textColor=rl_colors.HexColor(PDF_COLORS["subtitle"]),
-        spaceAfter=10,
-    )
-    section_style = ParagraphStyle(
-        "Section",
-        parent=styles["Heading3"],
-        fontSize=PDF_FONTS["section_size"],
-        textColor=rl_colors.HexColor(PDF_COLORS["section"]),
-        spaceAfter=6,
-    )
-
-    logo_path = _resolve_logo_path()
+    title_style, subtitle_style, section_style, footer_style = _get_pdf_styles()
+    normal_style = getSampleStyleSheet()["Normal"]
+    logo_bytes = _get_cached_logo_bytes()
     title_para = Paragraph(PDF_TEXT["title"], title_style)
     subtitle_para = Paragraph(
         f"{PDF_TEXT['subtitle_prefix']} • {invoice_data.as_of_date.strftime('%Y-%m-%d')}",
         subtitle_style,
     )
 
-    if logo_path:
-        logo_img = Image(str(logo_path), width=1.8 * rl_inch, height=1.8 * rl_inch)
+    if logo_bytes:
+        logo_img = Image(BytesIO(logo_bytes), width=1.8 * rl_inch, height=1.8 * rl_inch)
         logo_img.hAlign = "RIGHT"
         header_table = Table(
             [[title_para, logo_img], [subtitle_para, ""]],
@@ -330,7 +378,7 @@ def render_invoice_pdf(file_path: str, invoice_data: PdfInvoiceData) -> None:
         f"<b>{PDF_TEXT['label_company']}</b> {invoice_data.company or PDF_TEXT['dash']}<br/>"
         f"<b>{PDF_TEXT['label_invoice_uuid']}</b> {invoice_data.invoice_uuid}"
     )
-    elements.append(Paragraph(info_text, styles["Normal"]))
+    elements.append(Paragraph(info_text, normal_style))
     elements.append(Spacer(1, PDF_LAYOUT["section_spacer"] * rl_inch))
 
     if invoice_data.contracts:
@@ -344,21 +392,10 @@ def render_invoice_pdf(file_path: str, invoice_data: PdfInvoiceData) -> None:
             elements.append(Paragraph(PDF_TEXT["section_payments"], section_style))
             elements.append(_build_payments_table(invoice_data.recent_payments))
     else:
-        elements.append(Paragraph(PDF_TEXT["no_contracts"], styles["Normal"]))
+        elements.append(Paragraph(PDF_TEXT["no_contracts"], normal_style))
 
     elements.append(Spacer(1, PDF_LAYOUT["footer_spacer"] * rl_inch))
     footer_text = f"{PDF_TEXT['footer_prefix']} {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-    elements.append(
-        Paragraph(
-            footer_text,
-            ParagraphStyle(
-                "Footer",
-                parent=styles["Normal"],
-                fontSize=PDF_FONTS["footer_size"],
-                textColor=rl_colors.HexColor(PDF_COLORS["footer"]),
-                alignment=1,
-            ),
-        )
-    )
+    elements.append(Paragraph(footer_text, footer_style))
 
     doc.build(elements)

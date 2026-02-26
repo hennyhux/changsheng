@@ -18,9 +18,10 @@ def build_customers_tab(app, frame):
     app.customer_search = ttk.Entry(top, width=30)
     app.customer_search.grid(row=0, column=1, sticky="w", padx=6)
     app.customer_search.bind("<Return>", lambda e: app.refresh_customers())
+    app.customer_search.bind("<KeyRelease>", app._on_customer_search_keyrelease)
     ttk.Button(top, text="Find", command=app.refresh_customers).grid(row=0, column=2, padx=6)
     ttk.Button(top, text="Clear", command=app._clear_customer_search).grid(row=0, column=3, padx=6)
-    ttk.Button(top, text="Delete Selected", command=app.delete_customer).grid(row=0, column=4, padx=6)
+    ttk.Button(top, text="🔴 Delete Selected", command=app.delete_customer).grid(row=0, column=4, padx=6)
     data_frame = ttk.Frame(top)
     data_frame.grid(row=0, column=5, columnspan=3, padx=6, sticky="ew")
     ttk.Button(data_frame, text="Backup DB", command=app.backup_database).pack(side="left", padx=(0, 4))
@@ -106,7 +107,7 @@ def build_customers_tab(app, frame):
 
     btn_frame = ttk.Frame(form)
     btn_frame.grid(row=0, column=6, rowspan=2, padx=8, pady=6)
-    ttk.Button(btn_frame, text="Add Customer", command=app.add_customer).pack(ipadx=8, ipady=6)
+    ttk.Button(btn_frame, text="🟢 Add Customer", command=app.add_customer).pack(ipadx=8, ipady=6)
     ttk.Label(btn_frame, text="(Enter in any field)", font=("", 8), foreground="gray").pack()
 
     app.view_trucks_btn = ttk.Button(

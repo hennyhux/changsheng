@@ -18,8 +18,9 @@ def build_contracts_tab(app, frame):
     ttk.Label(top, text="(Search by name)").grid(row=0, column=0, sticky="w")
     app.contract_search = ttk.Entry(top, width=30)
     app.contract_search.grid(row=0, column=1, sticky="w", padx=6)
-    app.contract_search.bind("<Return>", lambda _e: app.refresh_contracts())
-    ttk.Button(top, text="Find", command=app.refresh_contracts).grid(row=0, column=2, padx=6)
+    app.contract_search.bind("<Return>", lambda _e: app.refresh_contracts(refresh_dependents=False))
+    app.contract_search.bind("<KeyRelease>", app._on_contract_search_keyrelease)
+    ttk.Button(top, text="Find", command=lambda: app.refresh_contracts(refresh_dependents=False)).grid(row=0, column=2, padx=6)
     ttk.Button(top, text="Clear", command=app._clear_contract_search).grid(row=0, column=3, padx=6)
 
     cols = ("contract_id", "status", "customer", "scope", "rate", "start", "end", "outstanding")
@@ -57,9 +58,9 @@ def build_contracts_tab(app, frame):
     ttk.Button(btns, text="💰  Record Payment", command=app.record_payment_for_selected_contract, style="Payment.TButton").pack(side="left", padx=(0, 8))
     ttk.Button(btns, text="Refresh", command=app.refresh_contracts).pack(side="left")
     ttk.Button(btns, text="Toggle Active/Inactive", command=app.toggle_contract).pack(side="left", padx=8)
-    ttk.Button(btns, text="Delete Selected", command=app.delete_contract, style="Warning.TButton").pack(side="left", padx=8)
+    ttk.Button(btns, text="🔴 Delete Selected", command=app.delete_contract, style="Warning.TButton").pack(side="left", padx=8)
     ttk.Frame(btns).pack(side="left", fill="x", expand=True)
-    ttk.Button(btns, text="📝 Create Contract", command=app.create_contract, style="CreateContract.TButton").pack(side="right", ipadx=12, ipady=4)
+    ttk.Button(btns, text="🟢 Create Contract", command=app.create_contract, style="CreateContract.TButton").pack(side="right", ipadx=12, ipady=4)
 
     form = ttk.LabelFrame(frame, text="Create Contract")
     form.grid(row=3, column=0, sticky="ew", padx=10, pady=10)
