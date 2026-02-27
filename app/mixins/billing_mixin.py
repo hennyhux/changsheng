@@ -241,7 +241,6 @@ class BillingMixin:
         if selected == str(self.sub_overdue):
             self.refresh_overdue()
         elif selected == str(self.sub_invoices):
-            self._sync_search_boxes_from_truck_search()
             self.refresh_invoices()
         elif selected == str(self.sub_statement):
             self.refresh_statement()

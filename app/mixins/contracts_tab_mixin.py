@@ -36,12 +36,6 @@ class ContractsTabMixin:
             self._contract_search_after_id = None
         if hasattr(self, "contract_search"):
             self.contract_search.delete(0, "end")
-        if hasattr(self, "truck_search"):
-            self.truck_search.delete(0, "end")
-        if hasattr(self, "invoice_customer_search"):
-            self.invoice_customer_search.delete(0, "end")
-        self._truck_search_mode = "all"
-        self._truck_filter_customer_id = None
         self.refresh_contracts(refresh_dependents=False)
 
     def _on_contract_search_keyrelease(self, _event=None):

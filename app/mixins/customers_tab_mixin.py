@@ -53,7 +53,7 @@ class CustomersTabMixin:
         self.truck_search.insert(0, customer_name)
         self.truck_search.focus_set()
         self.truck_search.icursor(tk.END)
-        self._sync_search_boxes_from_truck_search()
+        self._sync_search_boxes_from_truck_search(force=True)
         self._truck_search_mode = "customer_name"
         self._truck_filter_customer_id = customer_id
         self.refresh_trucks()

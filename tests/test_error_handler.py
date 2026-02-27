@@ -70,7 +70,7 @@ class TestSafeUIActionDecorator(unittest.TestCase):
         result = raise_type_error()
         assert result is None
 
-    @patch("error_handler.messagebox.showerror")
+    @patch("core.error_handler.messagebox.showerror")
     def test_decorator_shows_error_dialog_by_default(self, mock_show):
         """Test that error dialog is shown by default."""
 
@@ -84,7 +84,7 @@ class TestSafeUIActionDecorator(unittest.TestCase):
         assert "Test Action" in args[0]
         assert "Test error message" in args[1]
 
-    @patch("error_handler.messagebox.showerror")
+    @patch("core.error_handler.messagebox.showerror")
     def test_decorator_respects_show_error_dialog_false(self, mock_show):
         """Test that error dialog is not shown when show_error_dialog=False."""
 
@@ -187,7 +187,7 @@ class TestWrapActionWithErrorHandling(unittest.TestCase):
         wrapped = wrap_action_with_error_handling(my_func, "Test")
         assert wrapped.__name__ == "my_func"
 
-    @patch("error_handler.messagebox.showerror")
+    @patch("core.error_handler.messagebox.showerror")
     def test_wrapper_shows_error_dialog(self, mock_show):
         """Test that wrapper shows error dialog on exception."""
 
@@ -231,7 +231,7 @@ class TestFormatErrorMessage(unittest.TestCase):
 class TestLogException(unittest.TestCase):
     """Test log_exception function."""
 
-    @patch("error_handler.logger.exception")
+    @patch("core.error_handler.logger.exception")
     def test_log_exception_calls_logger(self, mock_logger):
         """Test that log_exception calls the logger."""
         exc = ValueError("Test error")
@@ -240,7 +240,7 @@ class TestLogException(unittest.TestCase):
         mock_logger.assert_called_once()
         assert "Test Action" in mock_logger.call_args[0][0]
 
-    @patch("error_handler.logger.exception")
+    @patch("core.error_handler.logger.exception")
     def test_log_exception_with_context(self, mock_logger):
         """Test that log_exception includes context information."""
         exc = ValueError("Test error")
@@ -254,7 +254,7 @@ class TestLogException(unittest.TestCase):
 class TestErrorHandlingIntegration(unittest.TestCase):
     """Integration tests for error handling system."""
 
-    @patch("error_handler.messagebox.showerror")
+    @patch("core.error_handler.messagebox.showerror")
     def test_multiple_exception_types_handled(self, mock_show):
         """Test that various exception types are handled gracefully."""
         test_exceptions = [
@@ -296,7 +296,7 @@ class TestErrorHandlingIntegration(unittest.TestCase):
         result = test_func(5)
         assert result == 5 + len("added")
 
-    @patch("error_handler.messagebox.showerror")
+    @patch("core.error_handler.messagebox.showerror")
     def test_error_handling_with_database_operations(self, mock_show):
         """Test error handling with database-like operations."""
 
@@ -310,7 +310,7 @@ class TestErrorHandlingIntegration(unittest.TestCase):
         error_title = mock_show.call_args[0][0]
         assert "Database Operation" in error_title
 
-    @patch("error_handler.messagebox.showerror")
+    @patch("core.error_handler.messagebox.showerror")
     def test_error_handling_with_file_operations(self, mock_show):
         """Test error handling with file I/O-like operations."""
 
