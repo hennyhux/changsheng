@@ -79,6 +79,17 @@ class StartupLayoutMixin:
         top_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=4)
         top_bar.columnconfigure(0, weight=1)
 
+        # ── Admin Actions dropdown (top-left) ──
+        self.admin_menu = tk.Menu(self, tearoff=0)
+        self.admin_menu.add_command(label="Backup DB", command=self.backup_database)
+        self.admin_menu.add_command(label="Restore DB", command=self.restore_database)
+        self.admin_menu.add_separator()
+        self.admin_menu.add_command(label="Export CSV", command=self.export_customers_trucks_csv)
+        self.admin_menu.add_command(label="Import CSV", command=self.import_customers_trucks)
+        self.admin_btn = ttk.Menubutton(top_bar, text="⚙ Admin Actions", direction="below")
+        self.admin_btn["menu"] = self.admin_menu
+        self.admin_btn.grid(row=0, column=0, sticky="w")
+
         ttk.Label(top_bar, text="Language:").grid(row=0, column=1, sticky="e", padx=(12, 4))
         self.global_lang_selector = self._create_language_selector(top_bar, width=6)
         self.global_lang_selector.grid(row=0, column=2, sticky="e")

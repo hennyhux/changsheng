@@ -6,7 +6,9 @@ import uuid
 from typing import Any, Mapping
 
 from data.database_service import DatabaseService
-from core.app_logging import trace
+from core.app_logging import trace, get_trace_logger
+
+_log = get_trace_logger()
 
 
 @dataclass
@@ -124,6 +126,11 @@ def _build_contract_line(
     end_date_str = str(row["end_date"]) if row["end_date"] else ""
     parsed_end = _parse_ymd(end_date_str) if end_date_str else None
     effective_end = min(parsed_end, as_of_date) if parsed_end else as_of_date
+    if parsed_end and parsed_end < as_of_date:
+        _log.debug(
+            "Contract %s end_date %s < as_of %s → capping at end_date",
+            row["contract_id"], parsed_end, as_of_date,
+        )
 
     months_elapsed = _elapsed_months_inclusive(start_date, effective_end)
     monthly_rate = float(row["monthly_rate"])
@@ -208,7 +215,7 @@ def build_pdf_invoice_data(
         return None
 
     contracts = db.get_active_contracts_for_customer_invoice(customer_id)
-    paid_rows = db.get_paid_totals_by_contract_as_of(as_of_date.isoformat())
+    paid_rows = db.get_paid_totals_by_customer_as_of(customer_id, as_of_date.isoformat())
     paid_by_contract = {int(r["contract_id"]): float(r["paid_total"]) for r in paid_rows}
     contract_lines: list[PdfContractLine] = []
 
@@ -224,9 +231,11 @@ def build_pdf_invoice_data(
             continue
 
         end_date_str = str(row["end_date"]) if row["end_date"] else ""
+        parsed_end = _parse_ymd(end_date_str) if end_date_str else None
+        effective_end = min(parsed_end, as_of_date) if parsed_end else as_of_date
         monthly_rate = float(row["monthly_rate"])
 
-        months = _elapsed_months_inclusive(start, as_of_date)
+        months = _elapsed_months_inclusive(start, effective_end)
         expected = monthly_rate * months
         paid = paid_by_contract.get(int(row["id"]), 0.0)
         outstanding = expected - paid

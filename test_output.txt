@@ -1,0 +1,131 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.9.6, pytest-8.4.2, pluggy-1.6.0 -- C:\Users\Henry\projects\changsheng\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Henry\projects\changsheng
+collecting ... collected 56 items
+
+tests/test_database_service_api.py::TestCustomerCRUD::test_create_and_get_customer PASSED [  1%]
+tests/test_database_service_api.py::TestCustomerCRUD::test_delete_customer PASSED [  3%]
+tests/test_database_service_api.py::TestCustomerCRUD::test_update_customer PASSED [  5%]
+tests/test_database_service_api.py::TestContractOperations::test_contract_exists_false_for_missing PASSED [  7%]
+tests/test_database_service_api.py::TestContractOperations::test_create_contract PASSED [  8%]
+tests/test_database_service_api.py::TestContractOperations::test_toggle_contract_active PASSED [ 10%]
+tests/test_database_service_api.py::TestPaidTotals::test_as_of_date_filtering PASSED [ 12%]
+tests/test_database_service_api.py::TestPaidTotals::test_get_paid_total_for_contract_as_of PASSED [ 14%]
+tests/test_database_service_api.py::TestPaidTotals::test_get_paid_total_for_contract_no_payments PASSED [ 16%]
+tests/test_database_service_api.py::TestPaidTotals::test_get_paid_totals_by_contract_as_of PASSED [ 17%]
+tests/test_database_service_api.py::TestPaidTotals::test_get_paid_totals_by_customer_as_of PASSED [ 19%]
+tests/test_database_service_api.py::TestPaidTotals::test_get_paid_totals_by_customer_empty PASSED [ 21%]
+tests/test_database_service_api.py::TestPaidTotals::test_get_paid_totals_by_customer_excludes_other_customers PASSED [ 23%]
+tests/test_database_service_api.py::TestGetOrCreateAnchorInvoice::test_creates_invoice_when_none_exist PASSED [ 25%]
+tests/test_database_service_api.py::TestGetOrCreateAnchorInvoice::test_returns_existing_invoice PASSED [ 26%]
+tests/test_database_service_api.py::TestDeletePaymentsByContract::test_delete_payments_does_not_affect_other_contracts PASSED [ 28%]
+tests/test_database_service_api.py::TestDeletePaymentsByContract::test_deletes_all_payments_for_contract PASSED [ 30%]
+tests/test_database_service_api.py::TestPaymentCountByContract::test_count_no_payments PASSED [ 32%]
+tests/test_database_service_api.py::TestPaymentCountByContract::test_count_with_payments PASSED [ 33%]
+tests/test_database_service_api.py::TestRecentPaymentsForCustomer::test_empty_for_no_payments PASSED [ 35%]
+tests/test_database_service_api.py::TestRecentPaymentsForCustomer::test_respects_limit PASSED [ 37%]
+tests/test_database_service_api.py::TestRecentPaymentsForCustomer::test_returns_payments_in_desc_order PASSED [ 39%]
+tests/test_database_service_api.py::TestCustomerByContract::test_get_customer_id_by_contract PASSED [ 41%]
+tests/test_database_service_api.py::TestCustomerByContract::test_get_customer_name_by_contract PASSED [ 42%]
+tests/test_database_service_api.py::TestCustomerByContract::test_get_customer_name_missing_contract PASSED [ 44%]
+tests/test_invoice_generator_public.py::TestBuildContractLine::test_basic_one_month PASSED [ 46%]
+tests/test_invoice_generator_public.py::TestBuildContractLine::test_end_date_after_as_of_uses_as_of PASSED [ 48%]
+tests/test_invoice_generator_public.py::TestBuildContractLine::test_end_date_caps_expected PASSED [ 50%]
+tests/test_invoice_generator_public.py::TestBuildContractLine::test_fully_paid PASSED [ 51%]
+tests/test_invoice_generator_public.py::TestBuildContractLine::test_invalid_start_date_returns_none PASSED [ 53%]
+tests/test_invoice_generator_public.py::TestBuildContractLine::test_missing_start_date_returns_none PASSED [ 55%]
+tests/test_invoice_generator_public.py::TestBuildContractLine::test_overpayment_still_paid_status PASSED [ 57%]
+tests/test_invoice_generator_public.py::TestBuildContractLine::test_scope_fallback_to_customer_level PASSED [ 58%]
+tests/test_invoice_generator_public.py::TestBuildInvoiceGroups::test_customer_with_all_paid PASSED [ 60%]
+tests/test_invoice_generator_public.py::TestBuildInvoiceGroups::test_empty_contracts PASSED [ 62%]
+tests/test_invoice_generator_public.py::TestBuildInvoiceGroups::test_multiple_contracts_same_customer PASSED [ 64%]
+tests/test_invoice_generator_public.py::TestBuildInvoiceGroups::test_single_customer_single_contract PASSED [ 66%]
+tests/test_invoice_generator_public.py::TestBuildInvoiceGroups::test_skips_invalid_start_date_rows PASSED [ 67%]
+tests/test_invoice_generator_public.py::TestBuildInvoiceGroups::test_two_customers_sorted_alphabetically PASSED [ 69%]
+tests/test_invoice_generator_public.py::TestBuildPdfInvoiceData::test_customer_not_found_returns_none PASSED [ 71%]
+tests/test_invoice_generator_public.py::TestBuildPdfInvoiceData::test_end_date_caps_expected_in_pdf PASSED [ 73%]
+tests/test_invoice_generator_public.py::TestBuildPdfInvoiceData::test_invoice_uuid_is_present PASSED [ 75%]
+tests/test_invoice_generator_public.py::TestBuildPdfInvoiceData::test_next_due_date_calculated PASSED [ 76%]
+tests/test_invoice_generator_public.py::TestBuildPdfInvoiceData::test_no_contracts_returns_empty PASSED [ 78%]
+tests/test_invoice_generator_public.py::TestBuildPdfInvoiceData::test_paid_by_customer_reduces_outstanding PASSED [ 80%]
+tests/test_invoice_generator_public.py::TestBuildPdfInvoiceData::test_recent_payments_included PASSED [ 82%]
+tests/test_invoice_generator_public.py::TestBuildPdfInvoiceData::test_single_contract_outstanding PASSED [ 83%]
+tests/test_invoice_generator_public.py::TestNextDueAfter::test_as_of_after_start_same_month PASSED [ 85%]
+tests/test_invoice_generator_public.py::TestNextDueAfter::test_as_of_before_start PASSED [ 87%]
+tests/test_invoice_generator_public.py::TestNextDueAfter::test_as_of_same_day_as_start PASSED [ 89%]
+tests/test_invoice_generator_public.py::TestNextDueAfter::test_year_wrap PASSED [ 91%]
+tests/test_refresh_cascades.py::TestToggleContractRefreshCascade::test_toggle_calls_all_refreshes FAILED [ 92%]
+tests/test_refresh_cascades.py::TestDeleteContractRefreshCascade::test_delete_contract_calls_all_refreshes FAILED [ 94%]
+tests/test_refresh_cascades.py::TestCreateContractRefreshCascade::test_create_contract_calls_all_refreshes FAILED [ 96%]
+tests/test_refresh_cascades.py::TestAddCustomerRefreshCascade::test_add_customer_calls_all_refreshes PASSED [ 98%]
+tests/test_refresh_cascades.py::TestEditCustomerRefreshCascade::test_edit_customer_save_calls_all_refreshes PASSED [100%]
+
+================================== FAILURES ===================================
+______ TestToggleContractRefreshCascade.test_toggle_calls_all_refreshes _______
+tests\test_refresh_cascades.py:64: in test_toggle_calls_all_refreshes
+    db.set_contract_active.assert_called_once_with(42, 0)
+..\..\AppData\Local\Programs\Python\Python39\lib\unittest\mock.py:918: in assert_called_once_with
+    raise AssertionError(msg)
+E   AssertionError: Expected 'set_contract_active' to be called once. Called 0 times.
+------------------------------ Captured log call ------------------------------
+ERROR    changsheng_app:error_handler.py:84 Error in Toggle Contract Status: 0
+Traceback (most recent call last):
+  File "C:\Users\Henry\projects\changsheng\core\error_handler.py", line 73, in wrapper
+    result = func(*args, **kwargs)
+  File "C:\Users\Henry\projects\changsheng\ui\ui_actions.py", line 943, in toggle_contract_action
+    contract_id = int(values[0])
+KeyError: 0
+ERROR    changsheng.exception:app_logging.py:287 EXCEPTION in Toggle Contract Status: 0 | CTX=decorator=safe_ui_action func=toggle_contract_action
+Traceback (most recent call last):
+  File "C:\Users\Henry\projects\changsheng\core\error_handler.py", line 73, in wrapper
+    result = func(*args, **kwargs)
+  File "C:\Users\Henry\projects\changsheng\ui\ui_actions.py", line 943, in toggle_contract_action
+    contract_id = int(values[0])
+KeyError: 0
+WARNING  changsheng.ux_action:app_logging.py:267 RESULT=FAILURE | ACTION=Toggle Contract Status | DETAILS=0
+__ TestDeleteContractRefreshCascade.test_delete_contract_calls_all_refreshes __
+tests\test_refresh_cascades.py:88: in test_delete_contract_calls_all_refreshes
+    _assert_full_refresh(self, app)
+tests\test_refresh_cascades.py:44: in _assert_full_refresh
+    test_case.assertTrue(
+E   AssertionError: False is not true : Expected refresh_dashboard() to be called, but it was not.
+------------------------------ Captured log call ------------------------------
+ERROR    changsheng_app:error_handler.py:84 Error in Delete Contract: 0
+Traceback (most recent call last):
+  File "C:\Users\Henry\projects\changsheng\core\error_handler.py", line 73, in wrapper
+    result = func(*args, **kwargs)
+  File "C:\Users\Henry\projects\changsheng\ui\ui_actions.py", line 669, in delete_contract_action
+    contract_id = int(values[0])
+KeyError: 0
+ERROR    changsheng.exception:app_logging.py:287 EXCEPTION in Delete Contract: 0 | CTX=decorator=safe_ui_action func=delete_contract_action
+Traceback (most recent call last):
+  File "C:\Users\Henry\projects\changsheng\core\error_handler.py", line 73, in wrapper
+    result = func(*args, **kwargs)
+  File "C:\Users\Henry\projects\changsheng\ui\ui_actions.py", line 669, in delete_contract_action
+    contract_id = int(values[0])
+KeyError: 0
+WARNING  changsheng.ux_action:app_logging.py:267 RESULT=FAILURE | ACTION=Delete Contract | DETAILS=0
+__ TestCreateContractRefreshCascade.test_create_contract_calls_all_refreshes __
+tests\test_refresh_cascades.py:129: in test_create_contract_calls_all_refreshes
+    _assert_full_refresh(self, app)
+tests\test_refresh_cascades.py:44: in _assert_full_refresh
+    test_case.assertTrue(
+E   AssertionError: False is not true : Expected refresh_dashboard() to be called, but it was not.
+------------------------------ Captured log call ------------------------------
+ERROR    changsheng_app:error_handler.py:84 Error in Create Contract: create_contract_action() got an unexpected keyword argument 'get_selected_truck_id_and_plate_cb'
+Traceback (most recent call last):
+  File "C:\Users\Henry\projects\changsheng\core\error_handler.py", line 73, in wrapper
+    result = func(*args, **kwargs)
+TypeError: create_contract_action() got an unexpected keyword argument 'get_selected_truck_id_and_plate_cb'
+ERROR    changsheng.exception:app_logging.py:287 EXCEPTION in Create Contract: create_contract_action() got an unexpected keyword argument 'get_selected_truck_id_and_plate_cb' | CTX=decorator=safe_ui_action func=create_contract_action
+Traceback (most recent call last):
+  File "C:\Users\Henry\projects\changsheng\core\error_handler.py", line 73, in wrapper
+    result = func(*args, **kwargs)
+TypeError: create_contract_action() got an unexpected keyword argument 'get_selected_truck_id_and_plate_cb'
+WARNING  changsheng.ux_action:app_logging.py:267 RESULT=FAILURE | ACTION=Create Contract | DETAILS=create_contract_action() got an unexpected keyword argument 'get_selected_truck_id_and_plate_cb'
+=========================== short test summary info ===========================
+FAILED tests/test_refresh_cascades.py::TestToggleContractRefreshCascade::test_toggle_calls_all_refreshes
+FAILED tests/test_refresh_cascades.py::TestDeleteContractRefreshCascade::test_delete_contract_calls_all_refreshes
+FAILED tests/test_refresh_cascades.py::TestCreateContractRefreshCascade::test_create_contract_calls_all_refreshes
+======================== 3 failed, 53 passed in 2.60s =========================

@@ -135,10 +135,11 @@ class ActionWrappersMixin:
 
     @trace
     def show_customer_ledger(self):
+        tag_colors_with_palette = {**TAG_COLORS, "_palette": self._theme_palette}
         show_customer_ledger_action(
             app=self,
             db=self.db,
-            tag_colors=TAG_COLORS,
+            tag_colors=tag_colors_with_palette,
             log_action_cb=self._log_action,
             export_customer_ledger_xlsx_cb=export_customer_ledger_xlsx,
         )

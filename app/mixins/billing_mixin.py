@@ -80,7 +80,7 @@ class BillingMixin:
             children_count = len(self.invoice_tree.get_children(parent_iid))
             values = list(self.invoice_tree.item(parent_iid, "values"))
             if values:
-                values[0] = self._invoice_group_label(children_count, False)
+                values[2] = self._invoice_group_label(children_count, False)
                 self.invoice_tree.item(parent_iid, values=values)
 
         self.invoice_tree.focus("")
@@ -92,7 +92,7 @@ class BillingMixin:
             children_count = len(self.invoice_tree.get_children(parent_iid))
             values = list(self.invoice_tree.item(parent_iid, "values"))
             if values:
-                values[0] = self._invoice_group_label(children_count, True)
+                values[2] = self._invoice_group_label(children_count, True)
                 self.invoice_tree.item(parent_iid, values=values)
 
     def _sort_invoice_tree(self, col: str):

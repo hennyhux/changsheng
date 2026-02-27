@@ -5,7 +5,9 @@ from datetime import date, timedelta
 import tkinter as tk
 from tkinter import messagebox
 
-from core.app_logging import trace
+from core.app_logging import trace, get_trace_logger
+
+_log = get_trace_logger()
 from utils.billing_date_utils import add_months, parse_ymd, today
 from utils.validation import normalize_whitespace
 
@@ -80,7 +82,7 @@ class DashboardMixin:
             company = str(row["company"] or "")
             if _matches("name", name) or _matches("phone", phone) or _matches("company", company):
                 detail = f"Phone: {phone or '—'} | Company: {company or '—'}"
-                results.append(("Customer", name, detail, {"tab": "customers", "id": int(row["id"]) }))
+                results.append(("Customer", name, detail, {"tab": "customers", "id": int(row["id"]), "name": name }))
 
         truck_rows = self.db.get_trucks_with_customer(q=None, limit=5000)
         for row in truck_rows:
@@ -138,6 +140,11 @@ class DashboardMixin:
 
         if target_tab == "customers":
             self.main_notebook.select(self.tab_customers)
+            customer_name = meta.get("name", "")
+            if customer_name and hasattr(self, "customer_search"):
+                self.customer_search.delete(0, "end")
+                self.customer_search.insert(0, customer_name)
+                _log.debug("Pre-filled customer search with '%s' from global search", customer_name)
             self.refresh_customers()
             self._select_tree_row_by_id(self.customer_tree, target_id)
             self._set_selected_customer(target_id)
@@ -219,3 +226,13 @@ class DashboardMixin:
         if hasattr(self, "billing_notebook") and hasattr(self, "sub_statement"):
             self.billing_notebook.select(self.sub_statement)
         self.refresh_statement()
+
+    def _refresh_affected_tabs_after_truck_change(self):
+        """Optimized batch refresh after truck add/delete. Avoids redundant queries."""
+        self.refresh_customers()
+        self.refresh_trucks()
+        self.refresh_contracts(refresh_dependents=False)
+        self.refresh_invoices()
+        self.refresh_overdue()
+        self.refresh_statement()
+        self.refresh_dashboard()

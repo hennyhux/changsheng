@@ -351,6 +351,15 @@ class ThemeLanguageMixin:
             self.overdue_menu.entryconfigure(1, label=("生成PDF发票" if zh else "Generate PDF Invoice"))
             self.overdue_menu.entryconfigure(3, label=("刷新" if zh else "Refresh"))
 
+        if hasattr(self, "admin_menu"):
+            self.admin_menu.entryconfigure(0, label=("备份数据库" if zh else "Backup DB"))
+            self.admin_menu.entryconfigure(1, label=("恢复数据库" if zh else "Restore DB"))
+            # index 2 is separator
+            self.admin_menu.entryconfigure(3, label=("导出CSV" if zh else "Export CSV"))
+            self.admin_menu.entryconfigure(4, label=("导入CSV" if zh else "Import CSV"))
+        if hasattr(self, "admin_btn"):
+            self.admin_btn.configure(text=("⚙ 管理操作" if zh else "⚙ Admin Actions"))
+
     def _on_language_changed(self, _event=None):
         if _event is not None and hasattr(_event, "widget") and _event.widget:
             selection = _event.widget.get().strip()

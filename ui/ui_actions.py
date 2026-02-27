@@ -519,6 +519,9 @@ def import_customers_trucks_action(
         app.refresh_trucks()
         app.refresh_contracts()
         app.refresh_invoices()
+        app.refresh_overdue()
+        app.refresh_statement()
+        app.refresh_dashboard()
         app._reload_customer_dropdowns()
         app._reload_truck_dropdowns()
         log_action_cb(
@@ -528,6 +531,11 @@ def import_customers_trucks_action(
                 f"Imported Contracts: {contracts_created}, Skipped Customers: {len(skip_customers)}, "
                 f"Skipped Trucks: {len(skip_trucks)}, Invalid Rows: {len(invalid_rows)}"
             ),
+        )
+        log_ux_action(
+            "Import CSV",
+            f"{len(new_customers)} customers, {len(new_trucks)} trucks, {contracts_created} contracts",
+            user_context=f"file={file_path}",
         )
         messagebox.showinfo(
             "Import Complete",
@@ -611,6 +619,11 @@ def open_payment_form_for_contract_action(
         db.create_payment(invoice_id, paid_at_date.isoformat(), amt, method, ref_val, notes_val)
         db.commit()
         customer_name = db.get_customer_name_by_contract(contract_id) or ""
+        log_ux_action(
+            "Record Payment",
+            f"${amt:.2f} via {method} for contract {contract_id}",
+            user_context=f"customer={customer_name}",
+        )
         log_action_cb(
             "RECORD_PAYMENT",
             (
@@ -628,7 +641,6 @@ def open_payment_form_for_contract_action(
         app.refresh_overdue()
         app.refresh_dashboard()
         app.refresh_histories()
-        app.refresh_payments()
         messagebox.showinfo("✓ Saved", f"Payment of ${amt:.2f} has been recorded.")
         return True
 
@@ -699,14 +711,19 @@ def delete_contract_action(
 
     db.delete_contract(contract_id)
     db.commit()
+    log_ux_action("Delete Contract", f"Contract #{contract_id} for {customer}")
     log_action_cb(
         "DELETE_CONTRACT",
         f"Contract ID: {contract_id}, Customer: {customer}, Scope: {scope}, Deleted Invoices: {invoice_count}, Deleted Payments: {payment_count}",
     )
 
+    app.refresh_customers()
+    app.refresh_trucks()
     app.refresh_contracts()
     app.refresh_invoices()
     app.refresh_overdue()
+    app.refresh_statement()
+    app.refresh_dashboard()
     messagebox.showinfo("✓ Deleted", f"Contract {contract_id} has been deleted.")
 
 
@@ -744,16 +761,12 @@ def delete_customer_action(
     if not ok:
         return
 
-    app.refresh_customers()
-    app.refresh_trucks()
-    app.refresh_contracts()
-    app.refresh_invoices()
-    app.refresh_overdue()
-
     final_confirm = messagebox.askyesno(
         "⚠️ Final Confirmation",
         f"Are you ABSOLUTELY SURE you want to delete '{customer_name}'?\n\n"
-        f"This will permanently delete {contract_count} contracts and {truck_count} trucks.\n\n"
+        f"This will permanently delete {contract_count} contracts "
+        f"(and their invoices/payments).\n"
+        f"{truck_count} truck(s) will be unassigned (not deleted).\n\n"
         f"THIS CANNOT BE UNDONE.",
         icon="warning",
     )
@@ -763,6 +776,7 @@ def delete_customer_action(
 
     db.delete_customer(customer_id)
     db.commit()
+    log_ux_action("Delete Customer", f"ID={customer_id} name='{customer_name}'")
     log_action_cb(
         "DELETE_CUSTOMER",
         f"Customer ID: {customer_id}, Name: {customer_name}, Related Contracts: {contract_count}, Unassigned Trucks: {truck_count}",
@@ -773,6 +787,8 @@ def delete_customer_action(
     app.refresh_contracts()
     app.refresh_invoices()
     app.refresh_overdue()
+    app.refresh_statement()
+    app.refresh_dashboard()
     messagebox.showinfo("Deleted", f"Customer '{customer_name}' deleted.")
 
 
@@ -846,6 +862,7 @@ def edit_selected_customer_action(
 
         db.update_customer(customer_id, new_name, new_phone, new_company, new_notes)
         db.commit()
+        log_ux_action("Edit Customer", f"ID={customer_id} name='{new_name}'")
         log_action_cb(
             "EDIT_CUSTOMER",
             (
@@ -862,6 +879,8 @@ def edit_selected_customer_action(
         app.refresh_contracts()
         app.refresh_invoices()
         app.refresh_overdue()
+        app.refresh_statement()
+        app.refresh_dashboard()
         win.destroy()
         messagebox.showinfo("Saved", f"Customer '{new_name}' has been updated.")
 
@@ -919,10 +938,7 @@ def delete_truck_action(
     db.commit()
     log_action_cb("DELETE_TRUCK", f"Truck ID: {truck_id}, Plate: {plate}, Related Contracts: {contract_count}")
 
-    app.refresh_trucks()
-    app.refresh_contracts()
-    app.refresh_invoices()
-    app.refresh_overdue()
+    app._refresh_affected_tabs_after_truck_change()
     messagebox.showinfo("✓ Deleted", f"Truck '{plate}' has been deleted.")
 
 
@@ -947,7 +963,15 @@ def toggle_contract_action(
     new_val = 0 if row["is_active"] else 1
     db.set_contract_active(contract_id, new_val)
     db.commit()
+    status_label = "ACTIVE" if new_val else "INACTIVE"
+    log_ux_action("Toggle Contract", f"Contract {contract_id} set to {status_label}")
+    app.refresh_customers()
+    app.refresh_trucks()
     app.refresh_contracts()
+    app.refresh_invoices()
+    app.refresh_overdue()
+    app.refresh_statement()
+    app.refresh_dashboard()
 
 
 @safe_ui_action("Record Payment for Contract")
@@ -1102,9 +1126,13 @@ def edit_contract_action(
             ),
         )
 
+        app.refresh_customers()
+        app.refresh_trucks()
         app.refresh_contracts()
         app.refresh_invoices()
         app.refresh_overdue()
+        app.refresh_statement()
+        app.refresh_dashboard()
         messagebox.showinfo("✓ Updated", "Contract has been updated.")
         return True
 
@@ -1269,6 +1297,10 @@ def create_contract_action(
         now_iso(),
     )
     db.commit()
+    log_ux_action(
+        "Create Contract",
+        f"Customer {customer_id}, rate=${rate:.2f}, start={parsed_start.isoformat()}",
+    )
     log_action_cb(
         "CREATE_CONTRACT",
         (
@@ -1283,7 +1315,13 @@ def create_contract_action(
     app.contract_notes.delete(0, tk.END)
     app.contract_rate.focus()
 
+    app.refresh_customers()
+    app.refresh_trucks()
     app.refresh_contracts()
+    app.refresh_invoices()
+    app.refresh_overdue()
+    app.refresh_statement()
+    app.refresh_dashboard()
     messagebox.showinfo("✓ Saved", f"Contract created for ${rate:.2f}/month starting {parsed_start}.")
 
 
@@ -1315,6 +1353,7 @@ def add_customer_action(
 
     customer_id = db.create_customer(name, phone, company, notes, now_iso())
     db.commit()
+    log_ux_action("Add Customer", f"ID={customer_id} name='{name}'")
     log_action_cb(
         "ADD_CUSTOMER",
         f"Customer ID: {customer_id}, Name: {name}, Phone: {phone or ''}, Company: {company or ''}, Notes: {notes or ''}",
@@ -1335,6 +1374,8 @@ def add_customer_action(
     app.refresh_contracts()
     app.refresh_invoices()
     app.refresh_overdue()
+    app.refresh_statement()
+    app.refresh_dashboard()
     messagebox.showinfo("✓ Saved", f"Customer '{name}' has been added.")
 
 
@@ -1453,10 +1494,7 @@ def add_truck_action(
     add_placeholder_cb(app.t_contract_rate, "Monthly cost...")
     app.t_plate.focus()
 
-    app.refresh_trucks()
-    app.refresh_contracts()
-    app.refresh_invoices()
-    app.refresh_overdue()
+    app._refresh_affected_tabs_after_truck_change()
     if customer_id is not None:
         messagebox.showinfo("✓ Saved", f"Truck '{plate}' has been added and a contract was created.")
     else:
@@ -1548,7 +1586,7 @@ def refresh_customers_action(
     if existing_items:
         app.customer_tree.delete(*existing_items)
 
-    rows = db.get_customers_with_truck_count(q=query_text, limit=200)
+    rows = db.get_customers_with_truck_count(q=query_text if query_text else None, limit=200)
     contracts = db.get_contracts_for_grid(limit=5000)
     as_of = today()
     paid_rows = db.get_paid_totals_by_contract_as_of(as_of.isoformat())
@@ -1677,12 +1715,12 @@ def show_customer_ledger_action(
 
     win = tk.Toplevel(app)
     win.title(f"Customer Ledger — {customer_name} (ID {customer_id})")
-    win.geometry("1280x780")
-    win.minsize(1180, 700)
+    win.geometry("1460x900")
+    win.minsize(1320, 780)
     win.resizable(True, True)
     win.grab_set()
     win.columnconfigure(0, weight=1)
-    win.rowconfigure(1, weight=1)
+    win.rowconfigure(2, weight=1)
 
     hdr = ttk.LabelFrame(win, text="Customer")
     hdr.grid(row=0, column=0, sticky="ew", padx=12, pady=(10, 4))
@@ -1709,8 +1747,12 @@ def show_customer_ledger_action(
             pady=6,
         )
 
+    actions = ttk.Frame(win)
+    actions.grid(row=1, column=0, sticky="ew", padx=12, pady=(2, 4))
+    ttk.Label(actions, text="Ledger Entries", font=FONTS.get("label_bold")).pack(side="left")
+
     tbl = ttk.Frame(win)
-    tbl.grid(row=1, column=0, sticky="nsew", padx=12, pady=4)
+    tbl.grid(row=2, column=0, sticky="nsew", padx=12, pady=4)
     tbl.columnconfigure(0, weight=1)
     tbl.rowconfigure(0, weight=1)
 
@@ -1734,7 +1776,7 @@ def show_customer_ledger_action(
         "notes": 220,
     }
 
-    tree = ttk.Treeview(tbl, columns=cols, show="headings", height=18)
+    tree = ttk.Treeview(tbl, columns=cols, show="headings", height=22)
     for col_name in cols:
         tree.heading(col_name, text=headings[col_name], anchor="center")
         tree.column(col_name, width=widths[col_name], anchor="center")
@@ -1746,19 +1788,39 @@ def show_customer_ledger_action(
     tree.grid(row=0, column=0, sticky="nsew")
     vsb.grid(row=0, column=1, sticky="ns")
 
+    palette = tag_colors.get("_palette", {})
+    is_dark_mode = bool(getattr(app, "theme_mode", "light") == "dark")
+
+    if is_dark_mode:
+        contract_active_bg = palette.get("stripe_odd", "#243142")
+        contract_active_fg = palette.get("text", "#f4f8ff")
+        contract_inactive_bg = palette.get("tree_bg", "#1d2632")
+        contract_inactive_fg = palette.get("muted_text", "#d5deea")
+    else:
+        contract_active_bg = tag_colors["contract_active"]["background"]
+        contract_active_fg = palette.get("text", "#111111")
+        contract_inactive_bg = tag_colors["contract_inactive"]["background"]
+        contract_inactive_fg = tag_colors["contract_inactive"]["foreground"]
+
     tree.tag_configure(
         "contract_active",
-        background=tag_colors["contract_active"]["background"],
+        background=contract_active_bg,
+        foreground=contract_active_fg,
         font=tag_colors["contract_active"]["font"],
     )
     tree.tag_configure(
         "contract_inactive",
-        background=tag_colors["contract_inactive"]["background"],
+        background=contract_inactive_bg,
+        foreground=contract_inactive_fg,
         font=tag_colors["contract_inactive"]["font"],
-        foreground=tag_colors["contract_inactive"]["foreground"],
     )
-    tree.tag_configure("payment_row", background="#ffffff")
-    tree.tag_configure("no_payments", background="#ffffff", foreground="#aaaaaa")
+
+    payment_row_bg = palette.get("stripe_even", "#ffffff")
+    payment_row_fg = palette.get("text", "#111111")
+    no_payments_fg = palette.get("muted_text", "#aaaaaa")
+
+    tree.tag_configure("payment_row", background=payment_row_bg, foreground=payment_row_fg)
+    tree.tag_configure("no_payments", background=payment_row_bg, foreground=no_payments_fg)
 
     grand_billed = 0.0
     grand_paid = 0.0
@@ -1834,7 +1896,7 @@ def show_customer_ledger_action(
                 )
 
     ftr = ttk.Frame(win)
-    ftr.grid(row=2, column=0, sticky="ew", padx=12, pady=(4, 10))
+    ftr.grid(row=3, column=0, sticky="ew", padx=12, pady=(4, 10))
 
     grand_outstanding = grand_billed - grand_paid
     summary = (
@@ -1858,7 +1920,7 @@ def show_customer_ledger_action(
             default_date=today().isoformat(),
         )
 
-    ttk.Button(ftr, text="Export XLSX", command=_export_ledger).pack(side="right", padx=(8, 0))
+    ttk.Button(actions, text="⬇ Export XLSX", command=_export_ledger).pack(side="right")
     ttk.Button(ftr, text="Close", command=win.destroy).pack(side="right")
 
 
@@ -2459,6 +2521,8 @@ def reset_contract_payments_action(
         f"Contract ID: {contract_id}, Customer: {customer}, Deleted Payments: {payment_count}, Reversed Amount: ${paid_amt:.2f}",
     )
 
+    app.refresh_customers()
+    app.refresh_contracts()
     app.refresh_invoices()
     app.refresh_statement()
     app.refresh_overdue()

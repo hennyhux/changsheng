@@ -530,23 +530,35 @@ class DatabaseService:
 
     @trace
     def get_customers_with_truck_count(self, q: str | None = None, limit: int = 200) -> list[sqlite3.Row]:
-        if q:
-            phone_q = "".join(ch for ch in str(q) if ch.isdigit())
-            phone_like = f"%{phone_q}%" if phone_q else "%"
+        query_text = str(q or "").strip()
+        if query_text:
+            phone_q = "".join(ch for ch in query_text if ch.isdigit())
+            phone_like = f"%{phone_q}%" if phone_q else ""
             return self.fetchall(
                 """
                 SELECT c.id, c.name, c.phone, c.company, COALESCE(c.notes, '') AS notes, COUNT(t.id) AS truck_count
                 FROM customers c
                 LEFT JOIN trucks t ON t.customer_id = c.id
-                WHERE c.name LIKE ?
+                WHERE c.name LIKE ? COLLATE NOCASE
                    OR c.phone LIKE ?
-                   OR c.company LIKE ?
-                   OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone, ''), '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '.', '') LIKE ?
+                   OR c.company LIKE ? COLLATE NOCASE
+                   OR COALESCE(c.notes, '') LIKE ? COLLATE NOCASE
+                         OR CAST(c.id AS TEXT) LIKE ?
+                         OR (? <> '' AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone, ''), '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '.', '') LIKE ?)
                 GROUP BY c.id
                 ORDER BY c.id DESC
                 LIMIT ?
                 """,
-                (f"%{q}%", f"%{q}%", f"%{q}%", phone_like, limit),
+                (
+                    f"%{query_text}%",
+                    f"%{query_text}%",
+                    f"%{query_text}%",
+                    f"%{query_text}%",
+                    f"%{query_text}%",
+                    phone_q,
+                    phone_like,
+                    limit,
+                ),
             )
 
         return self.fetchall(
@@ -582,14 +594,18 @@ class DatabaseService:
             where_clauses.append("t.customer_id = ?")
             params.append(customer_id)
 
-        if q:
+        query_text = str(q or "").strip()
+        if query_text:
             if search_mode == "customer_name":
-                where_clauses.append("c.name LIKE ?")
-                params.append(f"%{q}%")
+                where_clauses.append("COALESCE(c.name, '') LIKE ? COLLATE NOCASE")
+                params.append(f"%{query_text}%")
+            elif search_mode == "plate":
+                where_clauses.append("COALESCE(t.plate, '') LIKE ? COLLATE NOCASE")
+                params.append(f"%{query_text}%")
             else:
-                where_clauses.append("(t.plate LIKE ? OR c.name LIKE ?)")
-                params.append(f"%{q}%")
-                params.append(f"%{q}%")
+                where_clauses.append("(COALESCE(t.plate, '') LIKE ? COLLATE NOCASE OR COALESCE(c.name, '') LIKE ? COLLATE NOCASE)")
+                params.append(f"%{query_text}%")
+                params.append(f"%{query_text}%")
 
         query = base_query
         if where_clauses:
@@ -923,8 +939,25 @@ class DatabaseService:
         )
 
     @trace
+    def get_paid_totals_by_customer_as_of(self, customer_id: int, as_of_iso: str) -> list[sqlite3.Row]:
+        return self.fetchall(
+            """
+            SELECT i.contract_id, COALESCE(SUM(p.amount), 0) AS paid_total
+            FROM payments p
+            JOIN invoices i ON i.id = p.invoice_id
+            JOIN contracts ct ON ct.id = i.contract_id
+            WHERE ct.customer_id = ? AND DATE(p.paid_at) <= ?
+            GROUP BY i.contract_id
+            """,
+            (customer_id, as_of_iso),
+        )
+
+    @trace
     def get_customer_truck_export_rows(self, q: str | None = None) -> list[sqlite3.Row]:
-        if q:
+        query_text = str(q or "").strip()
+        if query_text:
+            phone_q = "".join(ch for ch in query_text if ch.isdigit())
+            phone_like = f"%{phone_q}%" if phone_q else ""
             return self.fetchall(
                 """
                 SELECT
@@ -939,10 +972,19 @@ class DatabaseService:
                     t.model
                 FROM customers c
                 LEFT JOIN trucks t ON t.customer_id = c.id
-                WHERE c.name LIKE ? OR c.phone LIKE ? OR c.company LIKE ?
+                WHERE c.name LIKE ? COLLATE NOCASE
+                   OR c.phone LIKE ?
+                   OR c.company LIKE ? COLLATE NOCASE
+                   OR (? <> '' AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone, ''), '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '.', '') LIKE ?)
                 ORDER BY c.name ASC, t.plate ASC
                 """,
-                (f"%{q}%", f"%{q}%", f"%{q}%"),
+                (
+                    f"%{query_text}%",
+                    f"%{query_text}%",
+                    f"%{query_text}%",
+                    phone_q,
+                    phone_like,
+                ),
             )
 
         return self.fetchall(
