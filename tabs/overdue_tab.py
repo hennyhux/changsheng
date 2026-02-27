@@ -14,6 +14,11 @@ def build_overdue_tab(app, frame):
 
     top = ttk.Frame(frame)
     top.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+    ttk.Button(
+        top, text="💰  Record Payment",
+        command=app._record_payment_for_selected_overdue,
+        style="Payment.TButton",
+    ).pack(side="left", padx=(0, 8))
     ttk.Button(top, text="Refresh", command=app.refresh_overdue).pack(side="left")
     ttk.Label(top, text="As-of Date (YYYY-MM-DD):").pack(side="left", padx=(12, 4))
     app.overdue_as_of = create_date_input(

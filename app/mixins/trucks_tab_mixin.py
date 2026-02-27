@@ -16,13 +16,13 @@ class TrucksTabMixin:
             self.after_cancel(self._truck_search_after_id)
             self._truck_search_after_id = None
         self.truck_search.delete(0, tk.END)
-        self._sync_search_boxes_from_truck_search()
+        self._sync_search_boxes_from_truck_search(force=True)
         self._truck_search_mode = "all"
         self._truck_filter_customer_id = None
         self.refresh_trucks()
 
     def _on_truck_search_keyrelease(self, _event=None):
-        self._sync_search_boxes_from_truck_search()
+        self._sync_search_boxes_from_truck_search(force=True)
         self._truck_search_mode = "all"
         self._truck_filter_customer_id = None
         self._schedule_truck_search_refresh()
@@ -36,16 +36,20 @@ class TrucksTabMixin:
         self._truck_search_after_id = None
         self.refresh_trucks()
 
-    def _sync_search_boxes_from_truck_search(self):
+    def _sync_search_boxes_from_truck_search(self, force: bool = False):
         if not hasattr(self, "truck_search"):
             return
         text = normalize_whitespace(self.truck_search.get())
         if hasattr(self, "contract_search"):
-            self.contract_search.delete(0, tk.END)
-            self.contract_search.insert(0, text)
+            existing = normalize_whitespace(self.contract_search.get())
+            if force or not existing:
+                self.contract_search.delete(0, tk.END)
+                self.contract_search.insert(0, text)
         if hasattr(self, "invoice_customer_search"):
-            self.invoice_customer_search.delete(0, tk.END)
-            self.invoice_customer_search.insert(0, text)
+            existing = normalize_whitespace(self.invoice_customer_search.get())
+            if force or not existing:
+                self.invoice_customer_search.delete(0, tk.END)
+                self.invoice_customer_search.insert(0, text)
 
     def _open_truck_customer_picker(self):
         if not hasattr(self, "_customers_cache") or not self._customers_cache:
