@@ -110,11 +110,13 @@ class TestClearInlineErrors(unittest.TestCase):
         frame = tk.Frame(self.root)
         frame.pack()
         
-        # Create error labels
+        # Create error labels with marker attribute
         error1 = tk.Label(frame, background="#ffebee")
+        error1._is_inline_error = True
         error1.grid()
         
         error2 = tk.Label(frame, background="#ffebee")
+        error2._is_inline_error = True
         error2.grid()
         
         # Create non-error label
@@ -143,6 +145,7 @@ class TestClearInlineErrors(unittest.TestCase):
         entry.grid()
         
         error = tk.Label(frame, background="#ffebee")
+        error._is_inline_error = True
         error.grid()
         
         # Clear errors

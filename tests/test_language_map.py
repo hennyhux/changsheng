@@ -2,13 +2,15 @@
 """Unit tests for language_map.py module."""
 
 import sys
+import tkinter as tk
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path so imports work
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
-from data.language_map import EN_TO_ZH
+from data.language_map import EN_TO_ZH, ZH_TO_EN, translate_widget_tree
 
 
 class TestLanguageMap(unittest.TestCase):
@@ -117,6 +119,108 @@ class TestLanguageMap(unittest.TestCase):
         ]
         for key in sample_keys:
             assert key in EN_TO_ZH, f"Key '{key}' not found in translation map"
+
+    # ── New localization coverage ──────────────────────────────────
+
+    def test_zh_to_en_reverse_map_complete(self):
+        """Every EN→ZH entry has a corresponding ZH→EN entry."""
+        for en, zh in EN_TO_ZH.items():
+            assert zh in ZH_TO_EN, f"ZH_TO_EN missing reverse for '{en}' → '{zh}'"
+            assert ZH_TO_EN[zh] == en
+
+    def test_emoji_prefixed_buttons_translated(self):
+        """Buttons that carry emoji prefixes must be in the map."""
+        emoji_buttons = [
+            "🔴 Delete Selected",
+            "🟢 Add Customer",
+            "🟢 Add Truck",
+            "🟢 Create Contract",
+            "⬇ Export XLSX",
+        ]
+        for btn in emoji_buttons:
+            assert btn in EN_TO_ZH, f"Emoji button '{btn}' not in map"
+
+    def test_dashboard_kpi_strings_translated(self):
+        """Dashboard KPI labels are translated."""
+        for key in ("As of:", "Refresh KPI", "Total Active Contracts",
+                     "Expected This Month", "Total Outstanding",
+                     "Overdue 30+ Days", "Oldest Unpaid Invoice"):
+            assert key in EN_TO_ZH, f"Dashboard string '{key}' missing"
+
+    def test_dashboard_search_headings_translated(self):
+        """Dashboard search-tree headings are in the map."""
+        for key in ("Type", "Match", "Detail"):
+            assert key in EN_TO_ZH, f"Dashboard heading '{key}' missing"
+
+    def test_statement_strings_translated(self):
+        """Statement tab strings are translated."""
+        for key in ("Chart:", "Expected Monthly Revenue (Last 12 Months)"):
+            assert key in EN_TO_ZH, f"Statement string '{key}' missing"
+
+    def test_dialog_labels_translated(self):
+        """All dialog labels added for dialogs are translated."""
+        dialog_keys = [
+            "Plate:", "(customer-level)", "Outstanding Balance:",
+            "Amount:", "Payment Date:", "Method:", "Reference:",
+            "Notes:", "Cancel", "Select", "Confirm Import",
+            "Search customer:", "Import Preview", "Contract Details",
+            "Paid Date", "Invoice Month", "Ledger Entries",
+            "Entry", "Date / Period", "Billed", "Scope / Method",
+            "Notes / Reference", "Rate ($/mo)", "Start Date",
+        ]
+        for key in dialog_keys:
+            assert key in EN_TO_ZH, f"Dialog label '{key}' missing"
+
+    def test_theme_label_translated(self):
+        """Top bar Theme: label is translated."""
+        assert "Theme:" in EN_TO_ZH
+
+    def test_trucks_parked_translated(self):
+        """Trucks tab 'Trucks Parked' label is translated."""
+        assert "Trucks Parked" in EN_TO_ZH
+
+    def test_translate_widget_tree_to_zh(self):
+        """translate_widget_tree converts English labels to Chinese."""
+        root = MagicMock()
+        child = MagicMock()
+        child.cget.return_value = "Cancel"
+        child.winfo_children.return_value = []
+        root.cget.return_value = "Select"
+        root.winfo_children.return_value = [child]
+
+        translate_widget_tree(root, "zh")
+
+        root.configure.assert_called_once_with(text="选择")
+        child.configure.assert_called_once_with(text="取消")
+
+    def test_translate_widget_tree_to_en(self):
+        """translate_widget_tree converts Chinese labels back to English."""
+        root = MagicMock()
+        root.cget.return_value = "取消"
+        root.winfo_children.return_value = []
+
+        translate_widget_tree(root, "en")
+
+        root.configure.assert_called_once_with(text="Cancel")
+
+    def test_translate_widget_tree_skips_unknown(self):
+        """translate_widget_tree ignores text not in the map."""
+        root = MagicMock()
+        root.cget.return_value = "something_unknown_xyz"
+        root.winfo_children.return_value = []
+
+        translate_widget_tree(root, "zh")
+
+        root.configure.assert_not_called()
+
+    def test_translate_widget_tree_handles_cget_error(self):
+        """translate_widget_tree does not crash if cget raises."""
+        root = MagicMock()
+        root.cget.side_effect = Exception("no text option")
+        root.winfo_children.return_value = []
+
+        # Should not raise
+        translate_widget_tree(root, "zh")
 
 
 if __name__ == "__main__":

@@ -18,9 +18,9 @@ def make_searchable_combo(combo: ttk.Combobox):
     def _on_focus_out(_event):
         value = combo.get().strip()
         all_vals = getattr(combo, "_search_all_values", list(combo["values"]))
+        combo["values"] = all_vals
         if value and value not in all_vals:
             combo.set("")
-            combo["values"] = all_vals
 
     combo.bind("<KeyRelease>", _on_key)
     combo.bind("<FocusOut>", _on_focus_out)

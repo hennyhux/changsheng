@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk
 from core.app_logging import trace
 from core.config import FONTS
+from data.language_map import translate_widget_tree
 
 
 @trace
@@ -128,8 +129,6 @@ def show_payment_popup(
     ttk.Button(btn_frame, text="Record Payment", command=on_record).grid(row=0, column=0, sticky="ew", padx=(0, 8), ipady=10)
     ttk.Button(btn_frame, text="Cancel", command=popup.destroy).grid(row=0, column=1, sticky="ew", padx=(8, 0), ipady=10)
 
-
-def _set_entry_text(widget: tk.Widget, value: str) -> None:
-    if hasattr(widget, "delete") and hasattr(widget, "insert"):
-        widget.delete(0, tk.END)
-        widget.insert(0, value)
+    lang = getattr(parent, "current_language", "en")
+    if lang != "en":
+        translate_widget_tree(popup, lang)

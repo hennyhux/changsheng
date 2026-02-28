@@ -67,6 +67,7 @@ class BillingMixin:
         is_open = bool(self.invoice_tree.item(row_id, "open"))
         self.invoice_tree.item(row_id, open=not is_open)
         self._update_invoice_parent_label(row_id)
+        self._apply_invoice_tree_visual_tags()
         return "break"
 
     @trace
@@ -84,6 +85,7 @@ class BillingMixin:
                 self.invoice_tree.item(parent_iid, values=values)
 
         self.invoice_tree.focus("")
+        self._apply_invoice_tree_visual_tags()
 
     @trace
     def expand_all_invoice_groups(self):
@@ -94,6 +96,7 @@ class BillingMixin:
             if values:
                 values[2] = self._invoice_group_label(children_count, True)
                 self.invoice_tree.item(parent_iid, values=values)
+        self._apply_invoice_tree_visual_tags()
 
     def _sort_invoice_tree(self, col: str):
         if getattr(self, "_invoice_sort_col", None) == col:
@@ -125,23 +128,49 @@ class BillingMixin:
         for idx, iid in enumerate(items):
             tree.move(iid, "", idx)
 
-        invoice_headings = {
-            "contract_id": "Contract ID",
-            "customer": "Customer",
-            "scope": "Scope",
-            "rate": "Rate",
-            "start": "Start",
-            "end": "End",
-            "months": "Elapsed Months",
-            "expected": "Expected",
-            "paid": "Paid",
-            "balance": "Outstanding",
-            "status": "Status",
-        }
         for c in tree["columns"]:
-            label = invoice_headings.get(c, c)
+            label = tree.heading(c, "text")
+            # Strip any existing sort indicator
+            label = label.rstrip(" ▲▼").rstrip()
             if c == col:
                 label += " ▼" if self._invoice_sort_rev else " ▲"
+            tree.heading(c, text=label)
+
+    def _reapply_invoice_tree_sort(self):
+        """Re-sort the invoice tree using the last-used sort column/direction."""
+        col = getattr(self, "_invoice_sort_col", None)
+        if not col or col not in self.invoice_tree["columns"]:
+            return
+
+        tree = self.invoice_tree
+        rev = getattr(self, "_invoice_sort_rev", False)
+        numeric_dollar = {"rate", "expected", "paid", "balance"}
+        numeric_int = {"contract_id", "months"}
+
+        def sort_key(iid):
+            val = tree.set(iid, col)
+            if col in numeric_dollar:
+                try:
+                    return float(val.replace("$", "").replace(",", "").strip())
+                except ValueError:
+                    return 0.0
+            if col in numeric_int:
+                try:
+                    return int(val)
+                except ValueError:
+                    return 0
+            return self._alphanum_key(val)
+
+        items = list(tree.get_children(""))
+        items.sort(key=sort_key, reverse=rev)
+        for idx, iid in enumerate(items):
+            tree.move(iid, "", idx)
+
+        for c in tree["columns"]:
+            label = tree.heading(c, "text")
+            label = label.rstrip(" ▲▼").rstrip()
+            if c == col:
+                label += " ▼" if rev else " ▲"
             tree.heading(c, text=label)
 
     def _on_overdue_search_keyrelease(self, _event=None):

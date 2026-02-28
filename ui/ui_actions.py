@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING, Any, Callable
 
 from utils.billing_date_utils import elapsed_months_inclusive, now_iso, parse_ym, parse_ymd, today, ym
+from data.language_map import translate_widget_tree, EN_TO_ZH
 from dialogs.contract_edit_dialog import open_contract_edit_dialog
 from core.app_logging import trace, log_ux_action, get_trace_logger
 from core.error_handler import safe_ui_action, safe_ui_action_returning
@@ -953,6 +954,9 @@ def toggle_contract_action(
         return
 
     values = app.contract_tree.item(sel[0], "values")
+    if not values:
+        messagebox.showerror("Invalid selection", "Could not read selected contract.")
+        return
     contract_id = int(values[0])
 
     row = db.get_contract_active_row(contract_id)
@@ -1183,6 +1187,8 @@ def show_contract_payment_history_action(
 
         status = values[10]
         customer = values[1]
+        if not str(customer).strip():
+            customer = db.get_customer_name_by_contract(contract_id) or ""
         scope = values[2]
         rate = values[3]
         start = values[4]
@@ -1718,6 +1724,7 @@ def show_customer_ledger_action(
     win.geometry("1460x900")
     win.minsize(1320, 780)
     win.resizable(True, True)
+    win.transient(app)
     win.grab_set()
     win.columnconfigure(0, weight=1)
     win.rowconfigure(2, weight=1)
@@ -1922,6 +1929,14 @@ def show_customer_ledger_action(
 
     ttk.Button(actions, text="⬇ Export XLSX", command=_export_ledger).pack(side="right")
     ttk.Button(ftr, text="Close", command=win.destroy).pack(side="right")
+
+    lang = getattr(app, "current_language", "en")
+    if lang != "en":
+        translate_widget_tree(win, lang)
+        mapping = EN_TO_ZH
+        for col_name in cols:
+            if headings[col_name] in mapping:
+                tree.heading(col_name, text=mapping[headings[col_name]])
 
 
 @safe_ui_action("Refresh Overdue")
@@ -2284,7 +2299,8 @@ def generate_customer_invoice_pdf_for_customer_id_action(
 
                 app.after(0, lambda: _on_complete(True, f"Invoice PDF saved to:\n{file_path}"))
             except Exception as exc:
-                app.after(0, lambda: _on_complete(False, f"Could not generate PDF:\n{exc}"))
+                error_msg = f"Could not generate PDF:\n{exc}"
+                app.after(0, lambda: _on_complete(False, error_msg))
             finally:
                 if worker_db is not None:
                     try:
@@ -2460,6 +2476,8 @@ def refresh_invoices_action(
         app._apply_invoice_tree_visual_tags()
 
     app._reapply_tree_sort(app.invoice_tree)
+    if hasattr(app, "_reapply_invoice_tree_sort"):
+        app._reapply_invoice_tree_sort()
     if selected_child_iid:
         app.invoice_tree.selection_set(selected_child_iid)
         app.invoice_tree.focus(selected_child_iid)

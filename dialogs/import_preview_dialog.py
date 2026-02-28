@@ -5,6 +5,7 @@ from core.config import FONTS
 import tkinter as tk
 from tkinter import ttk
 from core.app_logging import trace
+from data.language_map import translate_widget_tree
 
 
 @trace
@@ -75,12 +76,12 @@ def show_import_preview(
     _make_preview_tab(
         nb, f"✅ New Trucks ({len(new_trucks)})",
         new_trucks, ("Plate", "State", "Make", "Model", "Customer"),
-        lambda r: (r["plate"], r["state"], r["make"], r["model"], r["customer_name"]),
+        lambda r: (r["plate"], r["state"] or "", r["make"] or "", r["model"] or "", r["customer_name"]),
     )
     _make_preview_tab(
         nb, f"⏭ Skip Trucks ({len(skip_trucks)})",
         skip_trucks, ("Plate", "State", "Make", "Model", "Customer"),
-        lambda r: (r["plate"], r["state"], r["make"], r["model"], r["customer_name"]),
+        lambda r: (r["plate"], r["state"] or "", r["make"] or "", r["model"] or "", r["customer_name"]),
     )
     if new_contracts:
         _make_preview_tab(
@@ -108,3 +109,7 @@ def show_import_preview(
 
     ttk.Button(ftr, text="Cancel", command=preview.destroy).pack(side="right")
     ttk.Button(ftr, text="Confirm Import", command=_confirm).pack(side="right", padx=(0, 8))
+
+    lang = getattr(parent, "current_language", "en")
+    if lang != "en":
+        translate_widget_tree(preview, lang)

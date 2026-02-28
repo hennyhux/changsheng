@@ -19,6 +19,9 @@ class LifecycleMixin:
         if self.main_notebook.select() == str(self.tab_contracts):
             self._sync_search_boxes_from_truck_search()
             self.refresh_contracts(refresh_dependents=False)
+        elif self.main_notebook.select() == str(self.tab_billing):
+            self._sync_search_boxes_from_truck_search()
+            self._on_billing_tab_changed()
         self.after_idle(self._focus_current_tab_primary_input)
 
     @trace

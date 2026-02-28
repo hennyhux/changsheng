@@ -23,6 +23,7 @@ hidden_imports = [
 
 # Collect submodules from our application packages and tkinter
 hidden_imports.extend(collect_submodules('tkinter'))
+hidden_imports.extend(collect_submodules('app'))
 hidden_imports.extend(collect_submodules('core'))
 hidden_imports.extend(collect_submodules('utils'))
 hidden_imports.extend(collect_submodules('data'))

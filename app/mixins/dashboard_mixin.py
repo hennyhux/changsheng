@@ -58,12 +58,16 @@ class DashboardMixin:
                 return False
 
             if field_name == "plate":
+                if field not in ("all", "plate"):
+                    return False
                 candidate_plate = re.sub(r"[^a-z0-9]", "", candidate_l)
                 if not query_plate or not candidate_plate:
                     return False
                 return query_plate in candidate_plate
 
             if field_name == "phone":
+                if field not in ("all", "phone"):
+                    return False
                 candidate_digits = re.sub(r"\D", "", candidate)
                 if not query_digits or not candidate_digits:
                     return False

@@ -32,3 +32,14 @@ class SettingsMixin:
             changed = False
         if changed:
             self._save_app_settings()
+
+    def _get_auto_backup_dir(self) -> str | None:
+        return self._settings_service().get_auto_backup_dir(self._app_settings)
+
+    def _set_auto_backup_dir(self, dir_path: str) -> None:
+        try:
+            changed = self._settings_service().set_auto_backup_dir(self._app_settings, dir_path)
+        except Exception:
+            changed = False
+        if changed:
+            self._save_app_settings()

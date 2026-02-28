@@ -4,6 +4,7 @@ from typing import Callable, Iterable
 import tkinter as tk
 from tkinter import ttk, messagebox
 from core.app_logging import trace
+from data.language_map import translate_widget_tree, EN_TO_ZH
 
 
 @trace
@@ -130,3 +131,10 @@ def open_customer_picker(
     if children:
         tree.selection_set(children[0])
         tree.focus(children[0])
+
+    lang = getattr(parent, "current_language", "en")
+    if lang != "en":
+        translate_widget_tree(picker, lang)
+        for c in cols:
+            if headings[c] in EN_TO_ZH:
+                tree.heading(c, text=EN_TO_ZH[headings[c]])

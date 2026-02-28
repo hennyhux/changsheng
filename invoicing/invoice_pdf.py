@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, date
 from io import BytesIO
@@ -82,13 +83,20 @@ def generate_customer_invoice_pdf(
         as_of_date = datetime.now().date()
     
     # Build invoice data
-    build_t0 = perf_counter()
-    invoice_data = build_pdf_invoice_data(db, customer_id, as_of_date, payments_limit)
-    build_ms = (perf_counter() - build_t0) * 1000
-    if not invoice_data:
+    try:
+        build_t0 = perf_counter()
+        invoice_data = build_pdf_invoice_data(db, customer_id, as_of_date, payments_limit)
+        build_ms = (perf_counter() - build_t0) * 1000
+        if not invoice_data:
+            return PdfGenerationResult(
+                success=False,
+                message=f"Customer ID {customer_id} not found."
+            )
+    except Exception as e:
         return PdfGenerationResult(
             success=False,
-            message=f"Customer ID {customer_id} not found."
+            message=f"Could not build invoice data: {str(e)}",
+            error=e
         )
     
     # Render PDF
@@ -130,7 +138,7 @@ def get_default_invoice_filename(customer_name: str) -> str:
     Returns:
         Formatted filename with timestamp
     """
-    safe_name = customer_name.replace(' ', '_')
+    safe_name = re.sub(r'[\\/:*?"<>|]', '', customer_name).replace(' ', '_')
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     return f"invoice_{safe_name}_{timestamp}.pdf"
 

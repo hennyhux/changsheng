@@ -147,13 +147,20 @@ class ThemeLanguageMixin:
         try:
             if isinstance(root, tk.Text):
                 root.configure(bg=palette["text_widget_bg"], fg=palette["text_widget_fg"], insertbackground=palette["text_widget_fg"])
-            elif isinstance(root, ttk.Label) and self.theme_mode == "dark":
+            elif isinstance(root, ttk.Label):
                 try:
                     fg = str(root.cget("foreground")).strip().lower()
                 except Exception:
                     fg = ""
-                if fg in {"#777777", "#666666", "#888888", "#999999", "#aaaaaa", "gray", "grey"}:
-                    root.configure(foreground=palette["muted_text"])
+                if self.theme_mode == "dark":
+                    if fg in {"#777777", "#666666", "#888888", "#999999", "#aaaaaa", "gray", "grey"}:
+                        root._original_muted_fg = fg
+                        root.configure(foreground=palette["muted_text"])
+                else:
+                    original = getattr(root, "_original_muted_fg", None)
+                    if original is not None:
+                        root.configure(foreground=original)
+                        del root._original_muted_fg
             elif isinstance(root, (tk.Frame, tk.Label, tk.LabelFrame, tk.Toplevel, tk.Tk)) and not isinstance(root, ttk.Widget):
                 config_kwargs = {"bg": palette["surface_bg"]}
                 try:
@@ -283,6 +290,13 @@ class ThemeLanguageMixin:
         apply_headings(self.invoice_tree, invoice_headings)
         if hasattr(self, "overdue_tree"):
             apply_headings(self.overdue_tree, overdue_headings)
+        if hasattr(self, "dashboard_search_tree"):
+            dashboard_headings = (
+                {"type": "类型", "match": "匹配", "detail": "详情"}
+                if self.current_language == "zh"
+                else {"type": "Type", "match": "Match", "detail": "Detail"}
+            )
+            apply_headings(self.dashboard_search_tree, dashboard_headings)
 
     def _set_language(self, language: str):
         en_to_zh, zh_to_en = self._language_maps()
@@ -337,8 +351,6 @@ class ThemeLanguageMixin:
             self.contract_menu.entryconfigure(0, label=("查看付款历史" if zh else "View Payment History"))
             self.contract_menu.entryconfigure(2, label=("编辑合同" if zh else "Edit Contract"))
             self.contract_menu.entryconfigure(3, label=("切换启用/停用" if zh else "Toggle Active/Inactive"))
-            self.contract_menu.entryconfigure(4, label=("删除选中" if zh else "Delete Selected"))
-            self.contract_menu.entryconfigure(6, label=("刷新" if zh else "Refresh"))
 
         if hasattr(self, "invoice_menu"):
             self.invoice_menu.entryconfigure(0, label=("填写收款表单" if zh else "Fill Payment Form"))

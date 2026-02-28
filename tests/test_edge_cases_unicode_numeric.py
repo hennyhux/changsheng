@@ -127,11 +127,18 @@ class TestNumericEdgeCases(unittest.TestCase):
         assert result == 150000.0
 
     def test_float_infinity_string(self):
-        """Test 'inf' or 'infinity' strings."""
-        # Python's float() accepts 'inf' and it passes > 0 check (inf > 0 = True)
-        # This is a valid Python behavior - infinity is technically > 0
-        result = positive_float("Price", "inf")
-        assert result == float('inf')
+        """Test 'inf' or 'infinity' strings are rejected as non-numeric."""
+        with self.assertRaises(ValueError):
+            positive_float("Price", "inf")
+        with self.assertRaises(ValueError):
+            positive_float("Price", "infinity")
+
+    def test_float_nan_string(self):
+        """Test 'nan' strings are rejected as non-numeric."""
+        with self.assertRaises(ValueError):
+            positive_float("Price", "nan")
+        with self.assertRaises(ValueError):
+            positive_float("Price", "NaN")
 
 
 class TestBoundaryConditionEdgeCases(unittest.TestCase):

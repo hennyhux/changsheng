@@ -73,7 +73,7 @@ _UX_ACTION_FMT = logging.Formatter(
 )
 
 _TRACE_FMT = logging.Formatter(
-    "[%(asctime)s.%(msecs)03d] %(levelname)-8s | %(funcName)s | %(message)s",
+    "[%(asctime)s.%(msecs)03d] %(levelname)-8s | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
@@ -136,7 +136,8 @@ def _setup_exception_logger() -> logging.Logger:
     logger = logging.getLogger(EXCEPTION_LOGGER_NAME)
     _clear_logger_handlers(logger)
     logger.setLevel(logging.DEBUG)
-    logger.addHandler(_rotating_handler("exceptions.log", _EXCEPTION_FMT, logging.WARNING))
+    _exc_file_handler = _rotating_handler("exceptions.log", _EXCEPTION_FMT, logging.WARNING)
+    logger.addHandler(_exc_file_handler)
     logger.addHandler(_console_handler(logging.ERROR))
     logger.propagate = False
     return logger
@@ -173,12 +174,21 @@ def _setup_trace_logger() -> logging.Logger:
 def _setup_app_logger() -> logging.Logger:
     """
     Backward-compatible ``changsheng_app`` logger used by error_handler.py
-    and legacy code.  Routes to exception log file + console.
+    and legacy code.  Shares the exception log file handler to avoid
+    Windows file-locking conflicts on rotation.
     """
     logger = logging.getLogger(APP_LOGGER_NAME)
     _clear_logger_handlers(logger)
     logger.setLevel(logging.DEBUG)
-    logger.addHandler(_rotating_handler("exceptions.log", _EXCEPTION_FMT, logging.WARNING))
+    # Reuse the exception logger's file handler instead of opening a second one
+    exc_logger = logging.getLogger(EXCEPTION_LOGGER_NAME)
+    for h in exc_logger.handlers:
+        if isinstance(h, logging.handlers.RotatingFileHandler):
+            logger.addHandler(h)
+            break
+    else:
+        # Fallback if exception logger isn't set up yet
+        logger.addHandler(_rotating_handler("exceptions.log", _EXCEPTION_FMT, logging.WARNING))
     logger.addHandler(_console_handler(logging.WARNING))
     logger.propagate = False
     return logger
@@ -284,7 +294,7 @@ def log_exception(action: str, exc: Exception, context: str = "") -> None:
     msg = f"EXCEPTION in {action}: {exc}"
     if context:
         msg += f" | CTX={context}"
-    exc_log.error(msg, exc_info=True)
+    exc_log.error(msg, exc_info=(type(exc), exc, exc.__traceback__))
 
 
 # ---------------------------------------------------------------------------

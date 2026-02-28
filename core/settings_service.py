@@ -31,3 +31,13 @@ class SettingsService:
             return False
         settings["last_backup_dir"] = parent
         return True
+
+    def get_auto_backup_dir(self, settings: dict) -> str | None:
+        value = settings.get("auto_backup_dir")
+        return value if isinstance(value, str) and value else None
+
+    def set_auto_backup_dir(self, settings: dict, dir_path: str) -> bool:
+        if not dir_path:
+            return False
+        settings["auto_backup_dir"] = str(dir_path)
+        return True

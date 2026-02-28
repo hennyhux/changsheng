@@ -283,8 +283,9 @@ def log_exception(
     _log_exc_to_file(action, exc, context=ctx_str)
     # Also keep legacy behaviour
     extra = context or {}
-    logger.exception(
+    logger.error(
         f"Exception in {action}",
+        exc_info=(type(exc), exc, exc.__traceback__),
         extra=extra,
     )
 

@@ -4,6 +4,7 @@ from typing import Callable, Iterable
 import tkinter as tk
 from tkinter import ttk
 from core.app_logging import trace
+from data.language_map import translate_widget_tree
 
 
 @trace
@@ -136,3 +137,7 @@ def open_contract_edit_dialog(
 
     ttk.Button(action_bar, text="Save Changes", command=_save_contract).grid(row=0, column=0, sticky="ew", padx=(0, 6), ipady=4)
     ttk.Button(action_bar, text="Cancel", command=win.destroy).grid(row=0, column=1, sticky="ew", padx=(6, 0), ipady=4)
+
+    lang = getattr(parent, "current_language", "en")
+    if lang != "en":
+        translate_widget_tree(win, lang)

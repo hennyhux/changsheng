@@ -119,7 +119,7 @@ EN_TO_ZH = {
     "(Search by name)": "（按姓名搜索）",
     "View Contract History": "查看合同历史",
     "View Trucks": "查看卡车",
-    "  ← Select a customer or contract row in the table below, then click an action": "  ← 在下方表格选择客户或合同行，然后点击操作",
+    "  ← Select a customer or plate row in the table below, then click an action": "  ← 在下方表格选择客户或合同行，然后点击操作",
     "⚠️ ": "⚠️ ",
     # Histories tab
     "🕑 Histories": "🕑 历史记录",
@@ -130,7 +130,72 @@ EN_TO_ZH = {
     "Overdue 30+ Days": "逾期30天以上",
     "Oldest Unpaid Invoice": "最早未付发票",
     "None": "无",
+    # ── Main window strings with emoji prefixes ──
+    "🔴 Delete Selected": "🔴 删除选中",
+    "🟢 Add Customer": "🟢 添加客户",
+    "🟢 Add Truck": "🟢 添加卡车",
+    "🟢 Create Contract": "🟢 创建合同",
+    "⬇ Export XLSX": "⬇ 导出XLSX",
+    # ── Dashboard ──
+    "As of:": "截止日:",
+    "Refresh KPI": "刷新指标",
+    # ── Statement ──
+    "Chart:": "图表:",
+    "Expected Monthly Revenue (Last 12 Months)": "预期月收入（近12个月）",
+    # ── Top bar ──
+    "Theme:": "主题:",
+    # ── Trucks tab ──
+    "Trucks Parked": "停放车辆",
+    # ── Dialog labels ──
+    "Plate:": "车牌:",
+    "(customer-level)": "（客户级）",
+    "Outstanding Balance:": "未付余额:",
+    "Amount:": "金额:",
+    "Payment Date:": "付款日期:",
+    "Method:": "方式:",
+    "Reference:": "参考号:",
+    "Notes:": "备注:",
+    "Cancel": "取消",
+    "Select": "选择",
+    "Confirm Import": "确认导入",
+    "Search customer:": "搜索客户:",
+    "Import Preview": "导入预览",
+    "Contract Details": "合同详情",
+    "Paid Date": "付款日期",
+    "Invoice Month": "发票月份",
+    "Ledger Entries": "账本记录",
+    "Entry": "条目",
+    "Date / Period": "日期/期间",
+    "Billed": "已开账",
+    "Scope / Method": "范围/方式",
+    "Notes / Reference": "备注/参考号",
+    "Rate ($/mo)": "月费($/月)",
+    "Start Date": "开始日期",
 }
 
 # Create reverse mapping (Chinese to English)
 ZH_TO_EN = {v: k for k, v in EN_TO_ZH.items()}
+
+
+def translate_widget_tree(root, language: str) -> None:
+    """Translate all text attributes in a widget tree.
+    
+    Call this after building a dialog to apply the current language.
+    ``language`` should be ``"zh"`` or ``"en"``.
+    """
+    mapping = EN_TO_ZH if language == "zh" else ZH_TO_EN
+    _walk(root, mapping)
+
+
+def _walk(widget, mapping: dict) -> None:
+    try:
+        text_value = widget.cget("text")
+    except Exception:
+        text_value = None
+    if isinstance(text_value, str) and text_value in mapping:
+        try:
+            widget.configure(text=mapping[text_value])
+        except Exception:
+            pass
+    for child in widget.winfo_children():
+        _walk(child, mapping)

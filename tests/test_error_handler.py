@@ -231,7 +231,7 @@ class TestFormatErrorMessage(unittest.TestCase):
 class TestLogException(unittest.TestCase):
     """Test log_exception function."""
 
-    @patch("core.error_handler.logger.exception")
+    @patch("core.error_handler.logger.error")
     def test_log_exception_calls_logger(self, mock_logger):
         """Test that log_exception calls the logger."""
         exc = ValueError("Test error")
@@ -240,7 +240,7 @@ class TestLogException(unittest.TestCase):
         mock_logger.assert_called_once()
         assert "Test Action" in mock_logger.call_args[0][0]
 
-    @patch("core.error_handler.logger.exception")
+    @patch("core.error_handler.logger.error")
     def test_log_exception_with_context(self, mock_logger):
         """Test that log_exception includes context information."""
         exc = ValueError("Test error")

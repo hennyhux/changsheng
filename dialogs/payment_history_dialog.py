@@ -4,6 +4,7 @@ from typing import Iterable
 import tkinter as tk
 from tkinter import ttk
 from core.app_logging import trace
+from data.language_map import translate_widget_tree, EN_TO_ZH, ZH_TO_EN
 
 
 @trace
@@ -108,3 +109,12 @@ def show_contract_payment_history(parent: tk.Misc, contract_info: dict, rows: It
     )
     ttk.Label(ftr, text=summary_text, font=("TkDefaultFont", 10, "bold")).pack(side="left")
     ttk.Button(ftr, text="Close", command=win.destroy).pack(side="right")
+
+    lang = getattr(parent, "current_language", "en")
+    if lang != "en":
+        translate_widget_tree(win, lang)
+        mapping = EN_TO_ZH
+        for c in hist_cols:
+            heading_text = hist_headings[c]
+            if heading_text in mapping:
+                hist_tree.heading(c, text=mapping[heading_text])

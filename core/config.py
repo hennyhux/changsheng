@@ -13,6 +13,7 @@ HISTORY_LOG_FILE = "history_blackbox.txt"
 EXCEPTIONS_LOG_FILE = "exceptions.log"  # legacy – new logs go to log/ folder
 SETTINGS_FILE = "app_settings.json"
 BACKUP_REMINDER_DAYS = 7
+AUTO_BACKUP_MAX_COPIES = 20
 
 # Log directory and files (managed by app_logging.py)
 LOG_DIR = "log"

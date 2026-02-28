@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from core.config import PHONE_PATTERN, PLATE_PATTERN, STATE_PATTERN
 
 
@@ -59,6 +61,8 @@ def positive_float(label: str, value: str) -> float:
     try:
         number = float(cleaned)
     except ValueError:
+        raise ValueError(f"{label} must be numeric.")
+    if not math.isfinite(number):
         raise ValueError(f"{label} must be numeric.")
     if number <= 0:
         raise ValueError(f"{label} must be greater than 0.")

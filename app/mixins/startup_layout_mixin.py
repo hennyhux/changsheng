@@ -142,4 +142,5 @@ class StartupLayoutMixin:
         self.refresh_dashboard()
         self.refresh_histories()
         self._set_language("en")
-        self.after(800, self._prompt_backup_on_startup)
+        self.after(300, self._auto_backup_on_startup)
+        self.after(800, self._prompt_auto_backup_dir)

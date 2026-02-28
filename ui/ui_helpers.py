@@ -50,13 +50,14 @@ def show_inline_error(parent: tk.Widget, message: str, row: int, column: int, co
         pady=4,
     )
     error_label.grid(row=row, column=column, columnspan=columnspan, sticky="ew", padx=6, pady=2)
+    error_label._is_inline_error = True
     parent.after(5000, lambda: error_label.grid_forget() if error_label.winfo_exists() else None)
     return error_label
 
 
 def clear_inline_errors(parent: tk.Widget) -> None:
     for child in parent.winfo_children():
-        if isinstance(child, tk.Label) and child.cget("background") == "#ffebee":
+        if isinstance(child, tk.Label) and getattr(child, "_is_inline_error", False):
             child.grid_forget()
 
 

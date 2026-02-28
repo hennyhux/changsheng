@@ -73,7 +73,7 @@ def build_contracts_tab(app, frame):
     app.contract_customer_combo.grid(row=0, column=1, columnspan=3, sticky="w", padx=6, pady=6)
     app._make_searchable_combo(app.contract_customer_combo)
     app.contract_customer_combo.bind("<<ComboboxSelected>>", app._on_contract_customer_changed)
-    app.contract_customer_combo.bind("<FocusOut>", app._on_contract_customer_changed)
+    app.contract_customer_combo.bind("<FocusOut>", app._on_contract_customer_changed, add="+")
 
     ttk.Button(form, text="Find Customer", command=app._open_contract_customer_picker).grid(
         row=0, column=4, sticky="w", padx=6, pady=6

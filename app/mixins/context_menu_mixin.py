@@ -50,9 +50,10 @@ class ContextMenuMixin:
 
     def _show_tree_context_menu(self, event: tk.Event, tree: ttk.Treeview, menu: tk.Menu):
         row_id = tree.identify_row(event.y)
-        if row_id:
-            tree.selection_set(row_id)
-            tree.focus(row_id)
+        if not row_id:
+            return
+        tree.selection_set(row_id)
+        tree.focus(row_id)
         try:
             menu.tk_popup(event.x_root, event.y_root)
         finally:
