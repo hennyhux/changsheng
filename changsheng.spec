@@ -31,6 +31,7 @@ hidden_imports.extend(collect_submodules('invoicing'))
 hidden_imports.extend(collect_submodules('dialogs'))
 hidden_imports.extend(collect_submodules('ui'))
 hidden_imports.extend(collect_submodules('tabs'))
+hidden_imports.extend(collect_submodules('reportlab'))
 
 a = Analysis(
     ['changsheng.py'],
