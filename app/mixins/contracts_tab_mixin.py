@@ -7,9 +7,11 @@ from utils.validation import normalize_whitespace
 class ContractsTabMixin:
     def _on_scope_change(self):
         if self.contract_scope.get() == "customer_level":
+            if hasattr(self, "contract_truck_combo"):
+                self.contract_truck_combo.set("")
             self.contract_truck_combo.configure(state="disabled")
         else:
-            self.contract_truck_combo.configure(state="normal")
+            self.contract_truck_combo.configure(state="readonly")
 
     def _open_contract_customer_picker(self):
         if not hasattr(self, "_customers_cache") or not self._customers_cache:
@@ -29,6 +31,7 @@ class ContractsTabMixin:
             return
         customer_id = self._get_selected_customer_id_from_combo(self.contract_customer_combo)
         self._filter_contract_trucks(customer_id)
+        self._on_scope_change()
 
     def _clear_contract_search(self):
         if getattr(self, "_contract_search_after_id", None) is not None:

@@ -1,4 +1,5 @@
 {
   "theme_mode": "dark",
-  "auto_backup_dir": "C:/Users/Henry/projects/changsheng/db_backups"
+  "auto_backup_dir": "C:/Users/Henry/projects/changsheng/db_backups",
+  "last_backup_dir": "C:\\Users\\Henry\\projects\\changsheng\\db_backups"
 }

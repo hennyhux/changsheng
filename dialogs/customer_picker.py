@@ -73,6 +73,7 @@ def open_customer_picker(
     def _filtered_rows() -> list:
         raw = search_entry.get()
         query = normalize(raw).lower()
+        query_digits = "".join(ch for ch in query if ch.isdigit())
         if not query:
             return customers
         return [
@@ -82,6 +83,10 @@ def open_customer_picker(
                 query in str(cget(customer, "id", "")).lower()
                 or query in str(cget(customer, "name", "") or "").lower()
                 or query in str(cget(customer, "phone", "") or "").lower()
+                or (
+                    bool(query_digits)
+                    and query_digits in "".join(ch for ch in str(cget(customer, "phone", "") or "") if ch.isdigit())
+                )
                 or query in str(cget(customer, "company", "") or "").lower()
             )
         ]
