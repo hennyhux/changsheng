@@ -5,9 +5,19 @@ Builds a standalone Windows executable with all dependencies bundled
 """
 
 import sys
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, collect_all
 
 block_cipher = None
+
+
+def _extend_package_bundle(package_name: str, hidden_imports: list[str], datas: list[tuple], binaries: list[tuple]) -> None:
+    try:
+        pkg_datas, pkg_binaries, pkg_hidden = collect_all(package_name)
+    except Exception:
+        return
+    datas.extend(pkg_datas)
+    binaries.extend(pkg_binaries)
+    hidden_imports.extend(pkg_hidden)
 
 # Hidden imports required by the application
 hidden_imports = [
@@ -21,6 +31,12 @@ hidden_imports = [
     'openpyxl',  # Optional but included if available
 ]
 
+datas = [
+    ('app/logo.png', 'app'),
+    ('app/logo.png', '.'),
+]
+binaries = []
+
 # Collect submodules from our application packages and tkinter
 hidden_imports.extend(collect_submodules('tkinter'))
 hidden_imports.extend(collect_submodules('app'))
@@ -32,15 +48,23 @@ hidden_imports.extend(collect_submodules('dialogs'))
 hidden_imports.extend(collect_submodules('ui'))
 hidden_imports.extend(collect_submodules('tabs'))
 hidden_imports.extend(collect_submodules('reportlab'))
+hidden_imports.extend(collect_submodules('tkcalendar'))
+hidden_imports.extend(collect_submodules('openpyxl'))
+
+# Bundle dependency package data/binaries used at runtime.
+for dependency_pkg in ('reportlab', 'tkcalendar', 'babel', 'openpyxl', 'PIL'):
+    _extend_package_bundle(dependency_pkg, hidden_imports, datas, binaries)
+
+# Remove duplicates while preserving deterministic ordering.
+hidden_imports = list(dict.fromkeys(hidden_imports))
+datas = list(dict.fromkeys(datas))
+binaries = list(dict.fromkeys(binaries))
 
 a = Analysis(
     ['changsheng.py'],
     pathex=[],
-    binaries=[],
-    datas=[
-        ('app/logo.png', 'app'),
-        ('app/logo.png', '.'),
-    ],
+    binaries=binaries,
+    datas=datas,
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},
