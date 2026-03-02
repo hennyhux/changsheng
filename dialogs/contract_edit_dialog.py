@@ -76,7 +76,7 @@ def open_contract_edit_dialog(
     if optional_date_clear_on_blur_cb is not None:
         optional_date_clear_on_blur_cb(end_entry)
     ttk.Button(end_entry.master, text="Clear", command=lambda: end_entry.delete(0, tk.END)).grid(
-        row=3, column=3, sticky="e", padx=(0, 6), pady=6
+        row=3, column=4, sticky="w", padx=(0, 6), pady=6
     )
 
     ttk.Label(frm, text="Notes").grid(row=4, column=0, sticky="w", padx=6, pady=6)

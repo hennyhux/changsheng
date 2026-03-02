@@ -39,10 +39,19 @@ def add_months(year: int, month: int, delta: int) -> tuple[int, int]:
     return year_value, month_value
 
 
+def _last_day_of_month(d: date) -> int:
+    """Return the last day number of the month for the given date."""
+    import calendar
+    return calendar.monthrange(d.year, d.month)[1]
+
+
 def elapsed_months_inclusive(start_date: date, end_date: date) -> int:
     if end_date < start_date:
         return 0
     months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month) + 1
     if end_date.day < start_date.day:
-        months -= 1
+        # Don't penalize when end_date is the last day of its month and
+        # start_date.day simply doesn't exist in that shorter month.
+        if end_date.day != _last_day_of_month(end_date):
+            months -= 1
     return max(0, months)

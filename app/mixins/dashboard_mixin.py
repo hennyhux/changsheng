@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 from core.app_logging import trace, get_trace_logger
+from data.language_map import ZH_TO_EN
 
 _log = get_trace_logger()
 from utils.billing_date_utils import add_months, parse_ymd, today
@@ -13,6 +14,27 @@ from utils.validation import normalize_whitespace
 
 
 class DashboardMixin:
+    def _resolve_dashboard_selected_field(self, selected_label: str) -> str:
+        label = normalize_whitespace(selected_label)
+        if not label:
+            return "all"
+
+        if hasattr(self, "dashboard_search_fields"):
+            mapped = self.dashboard_search_fields.get(label)
+            if mapped:
+                return mapped
+
+        english_label = ZH_TO_EN.get(label, label)
+        normalized = english_label.strip().lower().replace("_", " ")
+        fallback_map = {
+            "all": "all",
+            "phone": "phone",
+            "name": "name",
+            "company": "company",
+            "plate": "plate",
+        }
+        return fallback_map.get(normalized, "all")
+
     def _clear_dashboard_global_search(self):
         if self._dashboard_search_after_id is not None:
             self.after_cancel(self._dashboard_search_after_id)
@@ -42,7 +64,7 @@ class DashboardMixin:
 
         query_l = query.lower()
         selected_label = self.dashboard_search_field.get().strip() if hasattr(self, "dashboard_search_field") else "All"
-        selected_field = self.dashboard_search_fields.get(selected_label, "all")
+        selected_field = self._resolve_dashboard_selected_field(selected_label)
         field = self._detect_dashboard_search_field(query) if selected_field == "all" else selected_field
 
         for item in self.dashboard_search_tree.get_children():
@@ -51,6 +73,7 @@ class DashboardMixin:
 
         query_plate = re.sub(r"[^a-z0-9]", "", query_l)
         query_digits = re.sub(r"\D", "", query)
+        query_has_alpha = any(ch.isalpha() for ch in query)
 
         def _matches(field_name: str, candidate: str) -> bool:
             candidate_l = normalize_whitespace(candidate).lower()
@@ -66,7 +89,10 @@ class DashboardMixin:
                 return query_plate in candidate_plate
 
             if field_name == "phone":
-                if field not in ("all", "phone"):
+                allow_phone_in_name_company_fallback = (
+                    field == "name_or_company" and bool(query_digits) and not query_has_alpha
+                )
+                if field not in ("all", "phone") and not allow_phone_in_name_company_fallback:
                     return False
                 candidate_digits = re.sub(r"\D", "", candidate)
                 if not query_digits or not candidate_digits:

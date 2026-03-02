@@ -61,6 +61,7 @@ class StartupLayoutMixin:
                 "Integrity checks failed or migration could not be completed.\n\n"
                 f"Details:\n{exc}",
             )
+            self._init_failed = True
             self.destroy()
             return False
 
@@ -142,5 +143,6 @@ class StartupLayoutMixin:
         self.refresh_dashboard()
         self.refresh_histories()
         self._set_language("en")
+        self._init_date_change_detection()
         self.after(300, self._auto_backup_on_startup)
         self.after(800, self._prompt_auto_backup_dir)

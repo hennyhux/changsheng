@@ -189,6 +189,7 @@ class TestDashboardFieldFilter(unittest.TestCase):
         query_l = query.strip().lower()
         query_plate = re.sub(r"[^a-z0-9]", "", query_l)
         query_digits = re.sub(r"\D", "", query)
+        query_has_alpha = any(ch.isalpha() for ch in query)
 
         def _matches(field_name, candidate):
             candidate_l = normalize_whitespace(candidate).lower()
@@ -202,7 +203,10 @@ class TestDashboardFieldFilter(unittest.TestCase):
                     return False
                 return query_plate in candidate_plate
             if field_name == "phone":
-                if field not in ("all", "phone"):
+                allow_phone_in_name_company_fallback = (
+                    field == "name_or_company" and bool(query_digits) and not query_has_alpha
+                )
+                if field not in ("all", "phone") and not allow_phone_in_name_company_fallback:
                     return False
                 candidate_digits = re.sub(r"\D", "", candidate)
                 if not query_digits or not candidate_digits:
@@ -234,6 +238,25 @@ class TestDashboardFieldFilter(unittest.TestCase):
     def test_phone_included_when_field_is_phone(self):
         matches = self._make_matches("phone", "5551234")
         self.assertTrue(matches("phone", "555-1234"))
+
+    def test_phone_included_for_numeric_query_in_name_company_fallback(self):
+        matches = self._make_matches("name_or_company", "1234")
+        self.assertTrue(matches("phone", "555-1234"))
+
+
+class TestDashboardSearchFieldResolution(unittest.TestCase):
+    def test_resolve_translated_phone_label(self):
+        from app.mixins.dashboard_mixin import DashboardMixin
+
+        mixin = DashboardMixin()
+        mixin.dashboard_search_fields = {
+            "All": "all",
+            "Plate": "plate",
+            "Name": "name",
+            "Company": "company",
+            "Phone": "phone",
+        }
+        self.assertEqual(mixin._resolve_dashboard_selected_field("电话"), "phone")
 
 
 # ---------------------------------------------------------------------------

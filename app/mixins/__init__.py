@@ -8,6 +8,7 @@ from .tree_sort_mixin import TreeSortMixin
 from .settings_mixin import SettingsMixin
 from .startup_layout_mixin import StartupLayoutMixin
 from .backup_startup_mixin import BackupStartupMixin
+from .date_change_detection_mixin import DateChangeDetectionMixin
 from .lifecycle_mixin import LifecycleMixin
 from .dropdown_cache_mixin import DropdownCacheMixin
 from .customers_tab_mixin import CustomersTabMixin

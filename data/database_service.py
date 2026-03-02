@@ -90,6 +90,9 @@ class DatabaseService:
 
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_start_date ON contracts(start_date)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_end_date ON contracts(end_date)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_customer_id ON contracts(customer_id)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_truck_id ON contracts(truck_id)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_contract_id ON invoices(contract_id)")
 
         self.conn.commit()
 
@@ -223,77 +226,84 @@ class DatabaseService:
             extra = "\n..." if len(issues) > 20 else ""
             raise ValueError(f"Integrity check failed before migration:\n{details}{extra}")
 
-        self.conn.execute("BEGIN")
-        self.conn.execute("ALTER TABLE customers RENAME TO customers_old")
-        self.conn.execute("ALTER TABLE trucks RENAME TO trucks_old")
-        self.conn.execute("ALTER TABLE contracts RENAME TO contracts_old")
-        self.conn.execute("ALTER TABLE invoices RENAME TO invoices_old")
-        self.conn.execute("ALTER TABLE payments RENAME TO payments_old")
+        try:
+            self.conn.execute("BEGIN")
+            self.conn.execute("ALTER TABLE customers RENAME TO customers_old")
+            self.conn.execute("ALTER TABLE trucks RENAME TO trucks_old")
+            self.conn.execute("ALTER TABLE contracts RENAME TO contracts_old")
+            self.conn.execute("ALTER TABLE invoices RENAME TO invoices_old")
+            self.conn.execute("ALTER TABLE payments RENAME TO payments_old")
 
-        self._create_schema_v3()
+            self._create_schema_v3()
 
-        self.conn.execute(
-            """
-            INSERT INTO customers(id, name, phone, company, notes, created_at)
-            SELECT id, name, phone, company, notes, created_at
-            FROM customers_old
-            """
-        )
-        self.conn.execute(
-            """
-            INSERT INTO trucks(id, customer_id, plate, state, make, model, notes, created_at)
-            SELECT id, customer_id, plate, state, make, model, notes, created_at
-            FROM trucks_old
-            """
-        )
-        self.conn.execute(
-            """
-            INSERT INTO contracts(
-                id, customer_id, truck_id, monthly_rate, start_ym, end_ym,
-                start_date, end_date, is_active, notes, created_at
-            )
-            SELECT
-                id, customer_id, truck_id, monthly_rate, start_ym, end_ym,
-                start_date, end_date, is_active, notes, created_at
-            FROM contracts_old
-            """
-        )
-        old_invoices = self.fetchall(
-            "SELECT id, contract_id, invoice_ym, invoice_date, amount, created_at FROM invoices_old"
-        )
-        for row in old_invoices:
-            invoice_uuid = str(uuid.uuid4())
             self.conn.execute(
                 """
-                INSERT INTO invoices(id, contract_id, invoice_uuid, invoice_ym, invoice_date, amount, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    row["id"],
-                    row["contract_id"],
-                    invoice_uuid,
-                    row["invoice_ym"],
-                    row["invoice_date"],
-                    row["amount"],
-                    row["created_at"],
-                ),
+                INSERT INTO customers(id, name, phone, company, notes, created_at)
+                SELECT id, name, phone, company, notes, created_at
+                FROM customers_old
+                """
             )
-        self.conn.execute(
-            """
-            INSERT INTO payments(id, invoice_id, paid_at, amount, method, reference, notes)
-            SELECT id, invoice_id, paid_at, amount, method, reference, notes
-            FROM payments_old
-            """
-        )
+            self.conn.execute(
+                """
+                INSERT INTO trucks(id, customer_id, plate, state, make, model, notes, created_at)
+                SELECT id, customer_id, plate, state, make, model, notes, created_at
+                FROM trucks_old
+                """
+            )
+            self.conn.execute(
+                """
+                INSERT INTO contracts(
+                    id, customer_id, truck_id, monthly_rate, start_ym, end_ym,
+                    start_date, end_date, is_active, notes, created_at
+                )
+                SELECT
+                    id, customer_id, truck_id, monthly_rate, start_ym, end_ym,
+                    start_date, end_date, is_active, notes, created_at
+                FROM contracts_old
+                """
+            )
+            old_invoices = self.fetchall(
+                "SELECT id, contract_id, invoice_ym, invoice_date, amount, created_at FROM invoices_old"
+            )
+            for row in old_invoices:
+                invoice_uuid = str(uuid.uuid4())
+                self.conn.execute(
+                    """
+                    INSERT INTO invoices(id, contract_id, invoice_uuid, invoice_ym, invoice_date, amount, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row["id"],
+                        row["contract_id"],
+                        invoice_uuid,
+                        row["invoice_ym"],
+                        row["invoice_date"],
+                        row["amount"],
+                        row["created_at"],
+                    ),
+                )
+            self.conn.execute(
+                """
+                INSERT INTO payments(id, invoice_id, paid_at, amount, method, reference, notes)
+                SELECT id, invoice_id, paid_at, amount, method, reference, notes
+                FROM payments_old
+                """
+            )
 
-        self.conn.execute("DROP TABLE payments_old")
-        self.conn.execute("DROP TABLE invoices_old")
-        self.conn.execute("DROP TABLE contracts_old")
-        self.conn.execute("DROP TABLE trucks_old")
-        self.conn.execute("DROP TABLE customers_old")
+            self.conn.execute("DROP TABLE payments_old")
+            self.conn.execute("DROP TABLE invoices_old")
+            self.conn.execute("DROP TABLE contracts_old")
+            self.conn.execute("DROP TABLE trucks_old")
+            self.conn.execute("DROP TABLE customers_old")
 
-        self._set_user_version(self.SCHEMA_VERSION)
-        self.conn.commit()
+            self._set_user_version(self.SCHEMA_VERSION)
+            self.conn.commit()
+        except Exception:
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
+            raise
 
     def _collect_integrity_issues(self) -> list[str]:
         issues: list[str] = []

@@ -42,7 +42,18 @@ from typing import Any, Callable, TypeVar
 # ---------------------------------------------------------------------------
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_LOG_DIR = os.path.join(_PROJECT_ROOT, "log")
+
+
+def _resolve_log_dir() -> str:
+    env_log_dir = os.getenv("CHANGSHENG_LOG_DIR", "").strip()
+    if env_log_dir:
+        return env_log_dir
+    if "pytest" in sys.modules:
+        return os.path.join(_PROJECT_ROOT, "log", "test")
+    return os.path.join(_PROJECT_ROOT, "log")
+
+
+_LOG_DIR = _resolve_log_dir()
 
 # Rotating-file settings
 _MAX_BYTES = 5 * 1024 * 1024  # 5 MB per file

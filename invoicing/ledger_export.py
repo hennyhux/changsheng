@@ -128,6 +128,17 @@ def export_customer_ledger_xlsx(
             max_len = max(max_len, len(str(val or "")))
         ws.column_dimensions[col].width = min(max(max_len + 2, 12), 48)
 
-    wb.save(fp)
+    try:
+        wb.save(fp)
+    except PermissionError:
+        messagebox.showerror(
+            "Export Failed",
+            f"Cannot save to:\n{fp}\n\nThe file may be open in another program. "
+            "Please close it and try again.",
+        )
+        return
+    except Exception as exc:
+        messagebox.showerror("Export Failed", f"Failed to save ledger:\n{exc}")
+        return
     log_action("EXPORT_LEDGER", f"Exported ledger for Customer ID {customer_id} ({customer_name}) to {fp}")
     messagebox.showinfo("Exported", f"Ledger saved to:\n{fp}")

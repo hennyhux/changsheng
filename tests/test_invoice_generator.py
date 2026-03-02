@@ -94,12 +94,12 @@ class TestInvoiceGeneratorElapsedMonths(unittest.TestCase):
         assert result == 0
 
     def test_elapsed_months_day_boundary(self):
-        """Test elapsed months at day boundary."""
+        """Test elapsed months at day boundary — end-of-month counts as full month."""
         start = date(2024, 3, 31)
         end = date(2024, 4, 30)
         result = _elapsed_months_inclusive(start, end)
-        # Day 30 < day 31, so doesn't count full month
-        assert result == 1
+        # Apr 30 is the last day of April, so the full month is counted
+        assert result == 2
 
     def test_elapsed_months_multiple_years(self):
         """Test elapsed months across multiple years."""

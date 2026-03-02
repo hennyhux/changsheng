@@ -24,6 +24,7 @@ from app.mixins import (
     SettingsMixin,
     StartupLayoutMixin,
     BackupStartupMixin,
+    DateChangeDetectionMixin,
     LifecycleMixin,
     DropdownCacheMixin,
     CustomersTabMixin,
@@ -44,6 +45,7 @@ class App(
     ContextMenuMixin,
     TreeSortMixin,
     BackupStartupMixin,
+    DateChangeDetectionMixin,
     LifecycleMixin,
     DropdownCacheMixin,
     CustomersTabMixin,
@@ -64,8 +66,9 @@ class App(
 if __name__ == "__main__":
     enable_windows_dpi_awareness()
     app = App()
-    try:
-        app.mainloop()
-    except KeyboardInterrupt:
-        logger.info("KeyboardInterrupt received, closing application gracefully.")
-        app.on_close(force=True)
+    if not getattr(app, '_init_failed', False):
+        try:
+            app.mainloop()
+        except KeyboardInterrupt:
+            logger.info("KeyboardInterrupt received, closing application gracefully.")
+            app.on_close(force=True)

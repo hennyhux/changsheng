@@ -263,6 +263,16 @@ def _format_error_message(action: str, error_msg: str, exc: Exception) -> str:
     return "\n".join(lines)
 
 
+# Keys reserved by logging.LogRecord that must not appear in 'extra'
+_LOG_RECORD_RESERVED = frozenset({
+    "name", "msg", "args", "created", "relativeCreated", "exc_info",
+    "exc_text", "stack_info", "lineno", "funcName", "sinfo",
+    "filename", "module", "levelno", "levelname", "pathname",
+    "thread", "threadName", "process", "processName", "message",
+    "msecs", "taskName",
+})
+
+
 def log_exception(
     action: str,
     exc: Exception,
@@ -281,13 +291,17 @@ def log_exception(
         ctx_str = " ".join(f"{k}={v}" for k, v in context.items())
     # Log to structured exception log
     _log_exc_to_file(action, exc, context=ctx_str)
-    # Also keep legacy behaviour
-    extra = context or {}
-    logger.error(
-        f"Exception in {action}",
-        exc_info=(type(exc), exc, exc.__traceback__),
-        extra=extra,
-    )
+    # Also keep legacy behaviour — strip reserved keys to prevent crash
+    extra = {k: v for k, v in (context or {}).items() if k not in _LOG_RECORD_RESERVED}
+    try:
+        logger.error(
+            f"Exception in {action}",
+            exc_info=(type(exc), exc, exc.__traceback__),
+            extra=extra,
+        )
+    except Exception:
+        # Last resort: log without extra context rather than crashing
+        logger.error(f"Exception in {action}", exc_info=True)
 
 
 __all__ = [

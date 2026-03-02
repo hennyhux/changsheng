@@ -65,14 +65,12 @@ def test_fill_payment_form():
             
         except AssertionError as e:
             print(f"  ✗ FAIL: {e}\n")
-            return False
+            raise
         except Exception as e:
             print(f"  ✗ FAIL: Unexpected error: {e}\n")
-            return False
+            raise
     
-    print("All tests passed! ✓")
-    return True
+    print("All tests passed! \u2713")
 
 if __name__ == "__main__":
-    success = test_fill_payment_form()
-    exit(0 if success else 1)
+    test_fill_payment_form()
