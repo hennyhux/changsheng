@@ -14,6 +14,9 @@ from utils.billing_date_utils import today
 
 logger = get_app_logger()
 
+# Interval for recurring automatic backups (1 hour in milliseconds)
+_HOURLY_BACKUP_INTERVAL_MS = 3_600_000
+
 
 class BackupStartupMixin:
     def _ensure_history_log_exists(self) -> None:
@@ -131,3 +134,35 @@ class BackupStartupMixin:
         logger.info(f"Startup backup prompt response: {'yes' if do_backup else 'no'}")
         if do_backup:
             self.backup_database()
+
+    # ── Hourly scheduled backup ─────────────────────────────────────
+
+    def _start_hourly_backup_scheduler(self) -> None:
+        """Begin the recurring hourly backup cycle."""
+        self._hourly_backup_timer_id = self.after(
+            _HOURLY_BACKUP_INTERVAL_MS,
+            self._hourly_backup_tick,
+        )
+        logger.info("Hourly backup scheduler started.")
+
+    def _hourly_backup_tick(self) -> None:
+        """Perform one backup and reschedule the next."""
+        logger.info("Hourly backup tick – running auto backup.")
+        try:
+            self._auto_backup_on_startup()
+        except Exception as exc:
+            logger.warning(f"Hourly backup tick failed: {exc}")
+        # Reschedule regardless of success/failure
+        self._hourly_backup_timer_id = self.after(
+            _HOURLY_BACKUP_INTERVAL_MS,
+            self._hourly_backup_tick,
+        )
+
+    def on_close(self, force: bool = False) -> None:
+        """Cancel the hourly backup timer before closing."""
+        if hasattr(self, "_hourly_backup_timer_id"):
+            try:
+                self.after_cancel(self._hourly_backup_timer_id)
+            except Exception:
+                pass
+        super().on_close(force=force)

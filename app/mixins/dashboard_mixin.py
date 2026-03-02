@@ -9,7 +9,7 @@ from core.app_logging import trace, get_trace_logger
 from data.language_map import ZH_TO_EN
 
 _log = get_trace_logger()
-from utils.billing_date_utils import add_months, parse_ymd, today
+from utils.billing_date_utils import add_months, elapsed_months_inclusive, parse_ymd, today
 from utils.validation import normalize_whitespace
 
 
@@ -227,15 +227,19 @@ class DashboardMixin:
             total_outstanding += outstanding
 
             if outstanding > 0.01:
-                paid_total = paid_by_contract.get(int(r["contract_id"]), 0.0)
-
+                # Use the same elapsed_months_inclusive model as billing:
+                # find the earliest month where cumulative expected > paid.
                 rate = float(r["monthly_rate"])
-                paid_months = int(paid_total // rate) if rate > 0 else 0
-                due_y, due_m = add_months(start_d.year, start_d.month, paid_months)
-                next_y2, next_m2 = add_months(due_y, due_m, 1)
-                last_day = (date(next_y2, next_m2, 1) - timedelta(days=1)).day
-                due_day = min(start_d.day, last_day)
-                oldest_due = date(due_y, due_m, due_day)
+                if rate > 0:
+                    paid_total = paid_by_contract.get(int(r["contract_id"]), 0.0)
+                    effective_end = min(end_d, as_of_date) if end_d else as_of_date
+                    total_months = elapsed_months_inclusive(start_d, effective_end)
+                    # Months fully covered by payments
+                    paid_months = min(int(paid_total // rate), total_months)
+                    due_y, due_m = add_months(start_d.year, start_d.month, paid_months)
+                    oldest_due = date(due_y, due_m, 1)
+                else:
+                    oldest_due = start_d
 
                 if oldest_due <= (as_of_date - timedelta(days=30)):
                     overdue_30_count += 1

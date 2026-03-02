@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk
 from core.app_logging import trace
 from data.language_map import translate_widget_tree
+from ui.ui_helpers import center_dialog_on_parent
 
 
 @trace
@@ -33,6 +34,8 @@ def show_import_preview(
     preview.resizable(True, True)
     preview.transient(parent)
     preview.grab_set()
+    preview.bind("<Escape>", lambda _e: preview.destroy())
+    center_dialog_on_parent(preview, parent, 1000, 540)
     preview.columnconfigure(0, weight=1)
     preview.rowconfigure(1, weight=1)
 

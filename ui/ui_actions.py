@@ -821,6 +821,10 @@ def edit_selected_customer_action(
     win.minsize(980, 400)
     win.transient(app)
     win.grab_set()
+    win.bind("<Escape>", lambda _e: win.destroy())
+
+    from ui.ui_helpers import center_dialog_on_parent
+    center_dialog_on_parent(win, app, 1080, 440)
 
     frm = ttk.Frame(win, padding=12)
     frm.pack(fill="both", expand=True)
@@ -888,6 +892,10 @@ def edit_selected_customer_action(
     ttk.Button(btns, text="Save Changes", command=_save_customer).grid(row=0, column=0, sticky="ew", padx=(0, 6), ipady=4)
     ttk.Button(btns, text="Cancel", command=win.destroy).grid(row=0, column=1, sticky="ew", padx=(6, 0), ipady=4)
 
+    name_entry.bind("<Return>", lambda _e: _save_customer())
+    phone_entry.bind("<Return>", lambda _e: _save_customer())
+    company_entry.bind("<Return>", lambda _e: _save_customer())
+    notes_entry.bind("<Return>", lambda _e: _save_customer())
     name_entry.focus_set()
 
 
@@ -1593,7 +1601,7 @@ def refresh_customers_action(
         app.customer_tree.delete(*existing_items)
 
     rows = db.get_customers_with_truck_count(q=query_text if query_text else None, limit=200)
-    contracts = db.get_contracts_for_grid(limit=5000)
+    contracts = db.get_contracts_for_grid(limit=0)  # no cap — need all for outstanding totals
     as_of = today()
     paid_rows = db.get_paid_totals_by_contract_as_of(as_of.isoformat())
     paid_by_contract = {int(row["contract_id"]): float(row["paid_total"]) for row in paid_rows}
@@ -1979,8 +1987,10 @@ def refresh_overdue_action(
             continue
 
         end_date = parse_ymd_cb(row["end_date"]) if row["end_date"] else None
+        # Inactive contracts without an end date: use as_of as the effective
+        # end so outstanding balance is still shown (prevents silent debt hiding).
         if int(row["is_active"]) != 1 and end_date is None:
-            continue
+            end_date = as_of
 
         effective_end = min(end_date, as_of) if end_date else as_of
         months_elapsed = elapsed_months_inclusive(start_date, effective_end)
@@ -2270,9 +2280,19 @@ def generate_customer_invoice_pdf_for_customer_id_action(
         def _worker() -> None:
             worker_db = None
             try:
+                import sqlite3 as _sqlite3
                 from data.database_service import DatabaseService
 
-                worker_db = DatabaseService(db.db_path)
+                # Use a lightweight read-only connection instead of a full
+                # DatabaseService which runs _init_db() write operations that
+                # conflict with the main thread.
+                worker_conn = _sqlite3.connect(db.db_path)
+                worker_conn.row_factory = _sqlite3.Row
+                worker_conn.execute("PRAGMA foreign_keys = ON")
+                worker_conn.execute("PRAGMA query_only = ON")
+                worker_db = DatabaseService.__new__(DatabaseService)
+                worker_db.db_path = db.db_path
+                worker_db.conn = worker_conn
 
                 t0 = perf_counter()
                 invoice_data = build_pdf_invoice_data_cb(worker_db, customer_id, datetime.now().date(), payments_limit=5)

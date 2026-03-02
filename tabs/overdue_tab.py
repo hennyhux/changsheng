@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from utils.billing_date_utils import today
-from ui.ui_helpers import create_date_input
+from ui.ui_helpers import add_placeholder, create_date_input
 from core.app_logging import trace
 
 
@@ -31,6 +31,7 @@ def build_overdue_tab(app, frame):
     ttk.Label(top, text="Search:").pack(side="left", padx=(12, 4))
     app.overdue_search = ttk.Entry(top, width=24)
     app.overdue_search.pack(side="left")
+    add_placeholder(app.overdue_search, "Customer or plate...")
     app.overdue_search.bind("<Return>", lambda _e: app.refresh_overdue())
     app.overdue_search.bind("<KeyRelease>", app._on_overdue_search_keyrelease)
     ttk.Button(top, text="Clear", command=app._clear_overdue_search).pack(side="left", padx=6)

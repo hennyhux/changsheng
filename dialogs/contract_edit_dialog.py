@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk
 from core.app_logging import trace
 from data.language_map import translate_widget_tree
+from ui.ui_helpers import center_dialog_on_parent
 
 
 @trace
@@ -32,6 +33,8 @@ def open_contract_edit_dialog(
     win.resizable(True, True)
     win.transient(parent)
     win.grab_set()
+    win.bind("<Escape>", lambda _e: win.destroy())
+    center_dialog_on_parent(win, parent, 1800, 560)
 
     frm = ttk.Frame(win, padding=12)
     frm.pack(fill="both", expand=True)
@@ -137,6 +140,10 @@ def open_contract_edit_dialog(
 
     ttk.Button(action_bar, text="Save Changes", command=_save_contract).grid(row=0, column=0, sticky="ew", padx=(0, 6), ipady=4)
     ttk.Button(action_bar, text="Cancel", command=win.destroy).grid(row=0, column=1, sticky="ew", padx=(6, 0), ipady=4)
+
+    rate_entry.bind("<Return>", lambda _e: _save_contract())
+    notes_entry.bind("<Return>", lambda _e: _save_contract())
+    customer_combo.focus_set()
 
     lang = getattr(parent, "current_language", "en")
     if lang != "en":

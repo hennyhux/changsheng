@@ -3,7 +3,7 @@ from tkinter import ttk
 
 from utils.billing_date_utils import today
 from core.config import FONTS, TAG_COLORS
-from ui.ui_helpers import create_date_input
+from ui.ui_helpers import add_placeholder, create_date_input
 from core.app_logging import trace
 
 
@@ -32,6 +32,7 @@ def build_invoices_tab(app, frame):
     ttk.Label(controls, text="Customer:").grid(row=0, column=6, sticky="e", padx=(10, 4), pady=6)
     app.invoice_customer_search = ttk.Entry(controls, width=22)
     app.invoice_customer_search.grid(row=0, column=7, sticky="w", padx=4, pady=6)
+    add_placeholder(app.invoice_customer_search, "Filter by customer...")
     app.invoice_customer_search.bind("<Return>", lambda _e: app.refresh_invoices())
     app.invoice_customer_search.bind("<KeyRelease>", app._on_invoice_customer_search_keyrelease)
     ttk.Button(controls, text="Clear", command=app._clear_invoice_customer_search).grid(row=0, column=8, padx=6)

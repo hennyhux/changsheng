@@ -169,3 +169,23 @@ def make_optional_date_clear_on_blur(widget: tk.Widget, date_entry_cls: type | N
     widget.bind("<KeyRelease>", _mark_user_set, add="+")
     if date_entry_cls is not None and isinstance(widget, date_entry_cls):
         widget.bind("<<DateEntrySelected>>", _mark_user_set, add="+")
+
+
+def center_dialog_on_parent(dialog: tk.Toplevel, parent: tk.Misc,
+                            width: int, height: int) -> None:
+    """Position *dialog* centred over *parent*.  Falls back to screen centre."""
+    dialog.update_idletasks()
+    try:
+        parent.update_idletasks()
+        px = parent.winfo_rootx()
+        py = parent.winfo_rooty()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        x = px + max(0, (pw - width) // 2)
+        y = py + max(0, (ph - height) // 2)
+    except Exception:
+        sw = dialog.winfo_screenwidth()
+        sh = dialog.winfo_screenheight()
+        x = max(0, (sw - width) // 2)
+        y = max(0, (sh - height) // 2)
+    dialog.geometry(f"{width}x{height}+{x}+{y}")

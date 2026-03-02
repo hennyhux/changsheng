@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from core.app_logging import trace
 from data.language_map import translate_widget_tree, EN_TO_ZH
+from ui.ui_helpers import center_dialog_on_parent
 
 
 @trace
@@ -35,6 +36,8 @@ def open_customer_picker(
     picker.minsize(680, 380)
     picker.transient(parent)
     picker.grab_set()
+    picker.bind("<Escape>", lambda _e: picker.destroy())
+    center_dialog_on_parent(picker, parent, 760, 460)
     picker.columnconfigure(0, weight=1)
     picker.rowconfigure(1, weight=1)
 
@@ -53,7 +56,11 @@ def open_customer_picker(
     for c in cols:
         tree.heading(c, text=headings[c], anchor="center")
         tree.column(c, width=widths[c], anchor="center")
-    tree.grid(row=1, column=0, sticky="nsew", padx=12)
+    tree_vsb = ttk.Scrollbar(picker, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=tree_vsb.set)
+    tree.grid(row=1, column=0, sticky="nsew", padx=(12, 0))
+    tree_vsb.grid(row=1, column=1, sticky="ns", padx=(0, 12))
+    picker.columnconfigure(1, weight=0)
 
     def _populate(rows: list) -> None:
         for item in tree.get_children():

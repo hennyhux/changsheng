@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk
 from core.app_logging import trace
 from data.language_map import translate_widget_tree, EN_TO_ZH, ZH_TO_EN
+from ui.ui_helpers import center_dialog_on_parent
 
 
 @trace
@@ -18,6 +19,8 @@ def show_contract_payment_history(parent: tk.Misc, contract_info: dict, rows: It
     win.minsize(1400, 800)
     win.transient(parent)
     win.grab_set()
+    win.bind("<Escape>", lambda _e: win.destroy())
+    center_dialog_on_parent(win, parent, 1600, 900)
 
     outstanding_value = contract_info.get("outstanding")
     if outstanding_value is not None:

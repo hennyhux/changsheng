@@ -11,7 +11,10 @@ from unittest.mock import MagicMock, patch, call
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.mixins.backup_startup_mixin import BackupStartupMixin
+from app.mixins.backup_startup_mixin import (
+    BackupStartupMixin,
+    _HOURLY_BACKUP_INTERVAL_MS,
+)
 from core.config import AUTO_BACKUP_MAX_COPIES
 from core.settings_service import SettingsService
 
@@ -279,6 +282,98 @@ class TestSettingsMixinAutoBackupWrappers(unittest.TestCase):
 
         svc.set_auto_backup_dir.assert_called_once_with({}, "/new/dir")
         mixin._save_app_settings.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Hourly scheduled backup
+# ---------------------------------------------------------------------------
+
+class TestHourlyBackupScheduler(unittest.TestCase):
+    """Tests for the recurring hourly auto-backup scheduler."""
+
+    def _make_mixin(self):
+        """Create a bare BackupStartupMixin wired with mock helpers."""
+        mixin = MagicMock()
+        # Use real methods under test
+        mixin._start_hourly_backup_scheduler = (
+            BackupStartupMixin._start_hourly_backup_scheduler.__get__(mixin)
+        )
+        mixin._hourly_backup_tick = (
+            BackupStartupMixin._hourly_backup_tick.__get__(mixin)
+        )
+        mixin.on_close = BackupStartupMixin.on_close.__get__(mixin)
+        # self.after returns a timer id
+        mixin.after.return_value = "timer_1"
+        return mixin
+
+    def test_interval_constant_is_one_hour(self):
+        self.assertEqual(_HOURLY_BACKUP_INTERVAL_MS, 3_600_000)
+
+    def test_start_scheduler_calls_after(self):
+        mixin = self._make_mixin()
+        mixin._start_hourly_backup_scheduler()
+
+        mixin.after.assert_called_once_with(
+            _HOURLY_BACKUP_INTERVAL_MS,
+            mixin._hourly_backup_tick,
+        )
+        self.assertEqual(mixin._hourly_backup_timer_id, "timer_1")
+
+    def test_tick_calls_auto_backup_and_reschedules(self):
+        mixin = self._make_mixin()
+        mixin.after.return_value = "timer_2"
+        mixin._hourly_backup_tick()
+
+        mixin._auto_backup_on_startup.assert_called_once()
+        mixin.after.assert_called_once_with(
+            _HOURLY_BACKUP_INTERVAL_MS,
+            mixin._hourly_backup_tick,
+        )
+        self.assertEqual(mixin._hourly_backup_timer_id, "timer_2")
+
+    def test_tick_reschedules_even_on_backup_failure(self):
+        mixin = self._make_mixin()
+        mixin._auto_backup_on_startup.side_effect = RuntimeError("disk full")
+        mixin.after.return_value = "timer_3"
+
+        mixin._hourly_backup_tick()  # should not raise
+
+        mixin.after.assert_called_once_with(
+            _HOURLY_BACKUP_INTERVAL_MS,
+            mixin._hourly_backup_tick,
+        )
+        self.assertEqual(mixin._hourly_backup_timer_id, "timer_3")
+
+    def test_on_close_cancels_timer(self):
+        class FakeParent:
+            def on_close(self, force=False):
+                pass
+
+        class TestMixin(BackupStartupMixin, FakeParent):
+            pass
+
+        obj = TestMixin.__new__(TestMixin)
+        obj._hourly_backup_timer_id = "timer_99"
+        obj.after_cancel = MagicMock()
+        obj.on_close(force=False)
+
+        obj.after_cancel.assert_called_once_with("timer_99")
+
+    def test_on_close_safe_when_no_timer(self):
+        """on_close should not error when scheduler was never started."""
+
+        class FakeParent:
+            def on_close(self, force=False):
+                pass
+
+        class TestMixin(BackupStartupMixin, FakeParent):
+            pass
+
+        obj = TestMixin.__new__(TestMixin)
+        obj.after_cancel = MagicMock()
+        obj.on_close(force=False)
+
+        obj.after_cancel.assert_not_called()
 
 
 if __name__ == "__main__":

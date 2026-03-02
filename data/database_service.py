@@ -37,8 +37,7 @@ class DatabaseService:
             current_version = self._get_user_version()
             if current_version < self.SCHEMA_VERSION:
                 self._migrate_to_v3()
-            else:
-                self._create_schema_v3()
+            # Schema already at current version — skip re-running DDL
 
         invoice_columns = {
             row["name"]
@@ -111,21 +110,30 @@ class DatabaseService:
         self.conn.execute(f"PRAGMA user_version = {int(version)}")
 
     def _create_schema_v3(self) -> None:
+        """Create all v3 tables, indexes, and triggers.
+
+        Uses individual ``execute()`` calls instead of ``executescript()``
+        so that the statements participate in any enclosing explicit
+        transaction (e.g. during migration).  ``executescript()`` issues
+        an implicit COMMIT first, which would break atomicity.
+        """
         methods = ", ".join([f"'{m}'" for m in self.ALLOWED_PAYMENT_METHODS])
-        self.conn.executescript(
-            f"""
-            CREATE TABLE IF NOT EXISTS customers (
+
+        self.conn.execute(
+            """CREATE TABLE IF NOT EXISTS customers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL CHECK (LENGTH(TRIM(name)) > 0),
                 phone TEXT,
                 company TEXT,
                 notes TEXT,
                 created_at TEXT NOT NULL
-            );
-
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_name_unique ON customers(LOWER(name));
-
-            CREATE TABLE IF NOT EXISTS trucks (
+            )"""
+        )
+        self.conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_name_unique ON customers(LOWER(name))"
+        )
+        self.conn.execute(
+            """CREATE TABLE IF NOT EXISTS trucks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 customer_id INTEGER,
                 plate TEXT NOT NULL UNIQUE CHECK (LENGTH(TRIM(plate)) > 0),
@@ -135,9 +143,10 @@ class DatabaseService:
                 notes TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS contracts (
+            )"""
+        )
+        self.conn.execute(
+            f"""CREATE TABLE IF NOT EXISTS contracts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 customer_id INTEGER NOT NULL,
                 truck_id INTEGER,
@@ -151,9 +160,10 @@ class DatabaseService:
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
                 FOREIGN KEY (truck_id) REFERENCES trucks(id) ON DELETE SET NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS invoices (
+            )"""
+        )
+        self.conn.execute(
+            f"""CREATE TABLE IF NOT EXISTS invoices (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 contract_id INTEGER NOT NULL,
                 invoice_uuid TEXT NOT NULL UNIQUE CHECK (LENGTH(TRIM(invoice_uuid)) > 0),
@@ -163,9 +173,10 @@ class DatabaseService:
                 created_at TEXT NOT NULL,
                 UNIQUE(contract_id, invoice_ym),
                 FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS payments (
+            )"""
+        )
+        self.conn.execute(
+            f"""CREATE TABLE IF NOT EXISTS payments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 invoice_id INTEGER NOT NULL,
                 paid_at TEXT NOT NULL CHECK (LENGTH(TRIM(paid_at)) > 0),
@@ -174,13 +185,15 @@ class DatabaseService:
                 reference TEXT,
                 notes TEXT,
                 FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
-            );
+            )"""
+        )
 
-            CREATE INDEX IF NOT EXISTS idx_trucks_plate ON trucks(plate);
-            CREATE INDEX IF NOT EXISTS idx_invoices_ym ON invoices(invoice_ym);
-            CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_trucks_plate ON trucks(plate)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_ym ON invoices(invoice_ym)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id)")
 
-            CREATE TRIGGER IF NOT EXISTS trg_contract_overlap_insert
+        self.conn.execute(
+            """CREATE TRIGGER IF NOT EXISTS trg_contract_overlap_insert
             BEFORE INSERT ON contracts
             WHEN NEW.is_active = 1 AND NEW.truck_id IS NOT NULL
             BEGIN
@@ -196,9 +209,10 @@ class DatabaseService:
                         )
                         THEN RAISE(ABORT, 'Overlapping active contract for same truck')
                     END;
-            END;
-
-            CREATE TRIGGER IF NOT EXISTS trg_contract_overlap_update
+            END"""
+        )
+        self.conn.execute(
+            """CREATE TRIGGER IF NOT EXISTS trg_contract_overlap_update
             BEFORE UPDATE ON contracts
             WHEN NEW.is_active = 1 AND NEW.truck_id IS NOT NULL
             BEGIN
@@ -215,8 +229,7 @@ class DatabaseService:
                         )
                         THEN RAISE(ABORT, 'Overlapping active contract for same truck')
                     END;
-            END;
-            """
+            END"""
         )
 
     def _migrate_to_v3(self) -> None:
@@ -378,7 +391,7 @@ class DatabaseService:
         return self.conn.execute(query, params).fetchall()
 
     def count(self, table: str, where_clause: str, params: tuple[Any, ...]) -> int:
-        query = f"SELECT COUNT(*) AS n FROM {table} WHERE {where_clause}"
+        query = f"SELECT COUNT(*) AS n FROM {self._quote_ident(table)} WHERE {where_clause}"
         row = self.conn.execute(query, params).fetchone()
         return int(row["n"]) if row else 0
 
@@ -517,6 +530,12 @@ class DatabaseService:
                     os.remove(db_temp_restore)
                 except Exception:
                     pass
+            # If the file was already replaced, restore the safety backup
+            if not os.path.exists(db_temp_restore) and os.path.exists(safety_backup_path):
+                try:
+                    os.replace(safety_backup_path, self.db_path)
+                except Exception:
+                    pass
             try:
                 self.conn = self._connect()
             except Exception:
@@ -627,8 +646,7 @@ class DatabaseService:
 
     @trace
     def get_contracts_for_grid(self, limit: int = 500) -> list[sqlite3.Row]:
-        return self.fetchall(
-            """
+        query = """
             SELECT
                 ct.id AS contract_id,
                 ct.customer_id AS customer_id,
@@ -646,10 +664,11 @@ class DatabaseService:
             JOIN customers c ON c.id=ct.customer_id
             LEFT JOIN trucks t ON t.id=ct.truck_id
             ORDER BY ct.id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        )
+        """
+        if limit > 0:
+            query += " LIMIT ?"
+            return self.fetchall(query, (limit,))
+        return self.fetchall(query)
 
     @trace
     def get_customer_dropdown_rows(self) -> list[sqlite3.Row]:

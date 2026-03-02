@@ -145,4 +145,5 @@ class StartupLayoutMixin:
         self._set_language("en")
         self._init_date_change_detection()
         self.after(300, self._auto_backup_on_startup)
+        self.after(500, self._start_hourly_backup_scheduler)
         self.after(800, self._prompt_auto_backup_dir)

@@ -39,6 +39,7 @@ def show_payment_popup(
 
     popup.transient(parent)
     popup.grab_set()
+    popup.bind("<Escape>", lambda _e: popup.destroy())
 
     popup.update_idletasks()
     try:

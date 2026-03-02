@@ -41,7 +41,13 @@ from typing import Any, Callable, TypeVar
 # Constants
 # ---------------------------------------------------------------------------
 
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# When running as a PyInstaller exe, __file__ points to a temp extraction
+# folder that is deleted on exit.  Use the directory containing the .exe
+# so that logs persist on disk beside the executable.
+if getattr(sys, "frozen", False):
+    _PROJECT_ROOT = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _resolve_log_dir() -> str:
