@@ -17,6 +17,10 @@ class MockApp(DateChangeDetectionMixin):
     """Minimal app class for testing date change detection."""
     def __init__(self):
         self._midnight_check_id = None
+        self.refresh_customers = MagicMock()
+        self.refresh_trucks = MagicMock()
+        self.refresh_contracts = MagicMock()
+        self.refresh_invoices = MagicMock()
         self.refresh_dashboard = MagicMock()
         self.refresh_statement = MagicMock()
         self.refresh_overdue = MagicMock()
@@ -54,6 +58,10 @@ class TestDateChangeDetectionMixin(unittest.TestCase):
         app._app_date = current_date
         app._check_for_midnight_rollover()
 
+        app.refresh_customers.assert_not_called()
+        app.refresh_trucks.assert_not_called()
+        app.refresh_contracts.assert_not_called()
+        app.refresh_invoices.assert_not_called()
         app.refresh_dashboard.assert_not_called()
         app.after.assert_called_once()  # reschedule only
 
@@ -69,6 +77,10 @@ class TestDateChangeDetectionMixin(unittest.TestCase):
         app._check_for_midnight_rollover()
 
         self.assertEqual(app._app_date, new_date)
+        app.refresh_customers.assert_called_once()
+        app.refresh_trucks.assert_called_once()
+        app.refresh_contracts.assert_called_once()
+        app.refresh_invoices.assert_called_once()
         app.refresh_dashboard.assert_called_once()
         app.refresh_statement.assert_called_once()
         app.refresh_overdue.assert_called_once()
@@ -79,6 +91,10 @@ class TestDateChangeDetectionMixin(unittest.TestCase):
         app = MockApp()
         app._refresh_for_date_change()
 
+        app.refresh_customers.assert_called_once()
+        app.refresh_trucks.assert_called_once()
+        app.refresh_contracts.assert_called_once()
+        app.refresh_invoices.assert_called_once()
         app.refresh_dashboard.assert_called_once()
         app.refresh_statement.assert_called_once()
         app.refresh_overdue.assert_called_once()
@@ -120,6 +136,10 @@ class TestMidnightDetectionIntegration(unittest.TestCase):
         app._check_for_midnight_rollover()
 
         self.assertEqual(app._app_date, new_date)
+        app.refresh_customers.assert_called_once()
+        app.refresh_trucks.assert_called_once()
+        app.refresh_contracts.assert_called_once()
+        app.refresh_invoices.assert_called_once()
         app.refresh_dashboard.assert_called_once()
         app.refresh_statement.assert_called_once()
         app.refresh_overdue.assert_called_once()
@@ -138,6 +158,10 @@ class TestMidnightDetectionIntegration(unittest.TestCase):
         app._check_for_midnight_rollover()
 
         # Refresh should not have been called
+        app.refresh_customers.assert_not_called()
+        app.refresh_trucks.assert_not_called()
+        app.refresh_contracts.assert_not_called()
+        app.refresh_invoices.assert_not_called()
         app.refresh_dashboard.assert_not_called()
         app.refresh_statement.assert_not_called()
         app.refresh_overdue.assert_not_called()
@@ -166,6 +190,10 @@ class TestMidnightDetectionIntegration(unittest.TestCase):
         self.assertEqual(app._app_date, date(2026, 3, 2))
         
         # Refresh should have been called exactly once (on day 2 transition)
+        self.assertEqual(app.refresh_customers.call_count, 1)
+        self.assertEqual(app.refresh_trucks.call_count, 1)
+        self.assertEqual(app.refresh_contracts.call_count, 1)
+        self.assertEqual(app.refresh_invoices.call_count, 1)
         self.assertEqual(app.refresh_dashboard.call_count, 1)
 
 

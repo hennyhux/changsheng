@@ -146,7 +146,7 @@ def _build_contract_line(
     expected_amount = monthly_rate * months_elapsed
     contract_id = int(row["contract_id"])
     paid_total = db.get_paid_total_for_contract_as_of(contract_id, as_of_date.isoformat())
-    outstanding = expected_amount - paid_total
+    outstanding = max(0.0, expected_amount - paid_total)
 
     return ContractInvoiceLine(
         contract_id=contract_id,
@@ -247,7 +247,7 @@ def build_pdf_invoice_data(
         months = _elapsed_months_inclusive(start, effective_end)
         expected = monthly_rate * months
         paid = paid_by_contract.get(int(row["id"]), 0.0)
-        outstanding = expected - paid
+        outstanding = max(0.0, expected - paid)
 
         total_expected += expected
         total_paid += paid

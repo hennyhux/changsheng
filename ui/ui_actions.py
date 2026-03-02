@@ -603,22 +603,40 @@ def open_payment_form_for_contract_action(
             messagebox.showerror("Date format error", "Payment date format must be YYYY-MM-DD.")
             return False
 
-        outstanding = get_contract_outstanding_as_of_cb(contract_id, as_of)
-        if outstanding <= 0.01:
-            messagebox.showerror("No balance", "No outstanding balance for this contract at the selected as-of date.")
-            return False
+        transaction_started = False
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            transaction_started = True
 
-        max_allowed = outstanding * 12.0
-        if amt > max_allowed:
-            messagebox.showerror(
-                "Amount too large",
-                f"Amount exceeds allowed limit. Outstanding: ${outstanding:.2f}; max allowed (12x): ${max_allowed:.2f}.",
-            )
-            return False
+            outstanding = get_contract_outstanding_as_of_cb(contract_id, as_of)
+            if outstanding <= 0.01:
+                db.conn.rollback()
+                transaction_started = False
+                messagebox.showerror("No balance", "No outstanding balance for this contract at the selected as-of date.")
+                return False
 
-        invoice_id = get_or_create_anchor_invoice_cb(contract_id, as_of)
-        db.create_payment(invoice_id, paid_at_date.isoformat(), amt, method, ref_val, notes_val)
-        db.commit()
+            if amt > (outstanding + 0.01):
+                db.conn.rollback()
+                transaction_started = False
+                messagebox.showerror(
+                    "Amount too large",
+                    f"Amount exceeds outstanding balance: ${outstanding:.2f}.",
+                )
+                return False
+
+            # Anchor payment to the paid_at month for correct invoice-month attribution.
+            invoice_id = get_or_create_anchor_invoice_cb(contract_id, paid_at_date)
+            db.create_payment(invoice_id, paid_at_date.isoformat(), amt, method, ref_val, notes_val)
+            db.commit()
+            transaction_started = False
+        except Exception as exc:
+            if transaction_started:
+                try:
+                    db.conn.rollback()
+                except Exception:
+                    pass
+            messagebox.showerror("Save failed", f"Could not record payment:\n{exc}")
+            return False
         customer_name = db.get_customer_name_by_contract(contract_id) or ""
         log_ux_action(
             "Record Payment",
@@ -2643,7 +2661,7 @@ def get_contract_outstanding_as_of_action(
     expected_amount = float(row["monthly_rate"]) * months_elapsed
 
     paid_total = db.get_paid_total_for_contract_as_of(contract_id, as_of_date.isoformat())
-    return expected_amount - paid_total
+    return max(0.0, expected_amount - paid_total)
 
 
 @safe_ui_action("Clear Invoice Search")

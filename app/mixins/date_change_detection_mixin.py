@@ -52,6 +52,10 @@ class DateChangeDetectionMixin:
         """Refresh all views that depend on the current date."""
         try:
             # Refresh views that use today's date
+            self.refresh_customers()
+            self.refresh_trucks()
+            self.refresh_contracts()
+            self.refresh_invoices()
             self.refresh_dashboard()
             self.refresh_statement()
             self.refresh_overdue()

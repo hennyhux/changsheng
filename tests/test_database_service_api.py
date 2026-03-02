@@ -226,14 +226,22 @@ class TestGetOrCreateAnchorInvoice(_DBTestCase):
         inv_id = self.db.get_or_create_anchor_invoice(ct, "2024-01", "2024-01-15", self._now)
         self.assertGreater(inv_id, 0)
 
-    def test_returns_existing_invoice(self):
+    def test_returns_existing_invoice_for_same_month(self):
+        cid = self._add_customer()
+        ct = self._add_contract(cid)
+        self.db.commit()
+        inv1 = self.db.get_or_create_anchor_invoice(ct, "2024-01", "2024-01-15", self._now)
+        inv2 = self.db.get_or_create_anchor_invoice(ct, "2024-01", "2024-01-20", self._now)
+        # Should reuse the same month invoice
+        self.assertEqual(inv1, inv2)
+
+    def test_creates_new_invoice_for_different_month(self):
         cid = self._add_customer()
         ct = self._add_contract(cid)
         self.db.commit()
         inv1 = self.db.get_or_create_anchor_invoice(ct, "2024-01", "2024-01-15", self._now)
         inv2 = self.db.get_or_create_anchor_invoice(ct, "2024-02", "2024-02-15", self._now)
-        # Should reuse the existing invoice
-        self.assertEqual(inv1, inv2)
+        self.assertNotEqual(inv1, inv2)
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 """Edge-case tests for payment-related UI actions."""
 
 import sys
+from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import unittest
 
 from ui.ui_actions import (
+    open_payment_form_for_contract_action,
     open_payment_form_window_action,
     record_payment_for_selected_truck_action,
 )
@@ -140,6 +142,88 @@ class TestOpenPaymentFormWindowEdgeCases(unittest.TestCase):
         args = open_form.call_args[0]
         self.assertEqual(args[0], 321)
         self.assertEqual(args[1], "(customer-level)")
+
+
+class TestOpenPaymentFormForContractPosting(unittest.TestCase):
+    @patch("ui.ui_actions.messagebox.showinfo")
+    @patch("ui.ui_actions.show_payment_popup")
+    def test_anchors_invoice_to_paid_at_month(self, mock_popup, _mock_info):
+        app = MagicMock()
+        app.refresh_customers = MagicMock()
+        app.refresh_contracts = MagicMock()
+        app.refresh_trucks = MagicMock()
+        app.refresh_invoices = MagicMock()
+        app.refresh_statement = MagicMock()
+        app.refresh_overdue = MagicMock()
+        app.refresh_dashboard = MagicMock()
+        app.refresh_histories = MagicMock()
+
+        db = MagicMock()
+        db.contract_exists.return_value = True
+        db.conn = MagicMock()
+
+        outstanding_cb = MagicMock(side_effect=[100.0, 100.0])
+        get_anchor_cb = MagicMock(return_value=111)
+        log_action_cb = MagicMock()
+
+        def _submit_from_popup(*args, **kwargs):
+            on_submit = args[5]
+            ok = on_submit("10", "2026-02-15", "cash", "", "")
+            self.assertTrue(ok)
+
+        mock_popup.side_effect = _submit_from_popup
+
+        open_payment_form_for_contract_action(
+            app=app,
+            db=db,
+            contract_id=7,
+            plate_label="TX-1",
+            as_of_date=date(2026, 3, 1),
+            get_contract_outstanding_as_of_cb=outstanding_cb,
+            get_or_create_anchor_invoice_cb=get_anchor_cb,
+            log_action_cb=log_action_cb,
+        )
+
+        db.execute.assert_any_call("BEGIN IMMEDIATE")
+        get_anchor_cb.assert_called_once_with(7, date(2026, 2, 15))
+        db.create_payment.assert_called_once()
+        db.commit.assert_called_once()
+
+    @patch("ui.ui_actions.messagebox.showerror")
+    @patch("ui.ui_actions.show_payment_popup")
+    def test_rejects_overpayment_above_outstanding(self, mock_popup, mock_error):
+        app = MagicMock()
+        db = MagicMock()
+        db.contract_exists.return_value = True
+        db.conn = MagicMock()
+
+        outstanding_cb = MagicMock(side_effect=[100.0, 100.0])
+        get_anchor_cb = MagicMock(return_value=111)
+        log_action_cb = MagicMock()
+
+        def _submit_from_popup(*args, **kwargs):
+            on_submit = args[5]
+            ok = on_submit("150", "2026-03-01", "cash", "", "")
+            self.assertFalse(ok)
+
+        mock_popup.side_effect = _submit_from_popup
+
+        open_payment_form_for_contract_action(
+            app=app,
+            db=db,
+            contract_id=7,
+            plate_label="TX-1",
+            as_of_date=date(2026, 3, 1),
+            get_contract_outstanding_as_of_cb=outstanding_cb,
+            get_or_create_anchor_invoice_cb=get_anchor_cb,
+            log_action_cb=log_action_cb,
+        )
+
+        db.execute.assert_any_call("BEGIN IMMEDIATE")
+        db.conn.rollback.assert_called_once()
+        db.create_payment.assert_not_called()
+        get_anchor_cb.assert_not_called()
+        mock_error.assert_called()
 
 
 if __name__ == "__main__":

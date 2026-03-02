@@ -854,24 +854,40 @@ class DatabaseService:
             """
             SELECT id
             FROM invoices
-            WHERE contract_id=?
+            WHERE contract_id=? AND invoice_ym=?
             ORDER BY COALESCE(invoice_date, created_at) DESC, id DESC
             LIMIT 1
             """,
-            (contract_id,),
+            (contract_id, invoice_ym),
         )
         if row:
             return int(row["id"])
 
         invoice_uuid = str(uuid.uuid4())
-        cur = self.execute(
-            """
-            INSERT INTO invoices(contract_id, invoice_uuid, invoice_ym, invoice_date, amount, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (contract_id, invoice_uuid, invoice_ym, invoice_date_iso, 0.0, created_at),
-        )
-        return int(cur.lastrowid)
+        try:
+            cur = self.execute(
+                """
+                INSERT INTO invoices(contract_id, invoice_uuid, invoice_ym, invoice_date, amount, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (contract_id, invoice_uuid, invoice_ym, invoice_date_iso, 0.0, created_at),
+            )
+            return int(cur.lastrowid)
+        except sqlite3.IntegrityError:
+            # Concurrent insert may have created the (contract_id, invoice_ym) row.
+            row = self.fetchone(
+                """
+                SELECT id
+                FROM invoices
+                WHERE contract_id=? AND invoice_ym=?
+                ORDER BY COALESCE(invoice_date, created_at) DESC, id DESC
+                LIMIT 1
+                """,
+                (contract_id, invoice_ym),
+            )
+            if not row:
+                raise
+            return int(row["id"])
 
     def create_payment(
         self,
