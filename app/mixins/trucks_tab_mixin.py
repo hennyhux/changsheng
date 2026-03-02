@@ -7,6 +7,7 @@ from core.app_logging import trace
 from dialogs.customer_picker import open_customer_picker
 from dialogs.payment_history_dialog import show_contract_payment_history
 from utils.billing_date_utils import today
+from ui.ui_helpers import get_entry_value
 from utils.validation import normalize_whitespace
 
 
@@ -41,12 +42,12 @@ class TrucksTabMixin:
             return
         text = normalize_whitespace(self.truck_search.get())
         if hasattr(self, "contract_search"):
-            existing = normalize_whitespace(self.contract_search.get())
+            existing = normalize_whitespace(get_entry_value(self.contract_search))
             if force or not existing:
                 self.contract_search.delete(0, tk.END)
                 self.contract_search.insert(0, text)
         if hasattr(self, "invoice_customer_search"):
-            existing = normalize_whitespace(self.invoice_customer_search.get())
+            existing = normalize_whitespace(get_entry_value(self.invoice_customer_search))
             if force or not existing:
                 self.invoice_customer_search.delete(0, tk.END)
                 self.invoice_customer_search.insert(0, text)

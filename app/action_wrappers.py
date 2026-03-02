@@ -315,7 +315,7 @@ class ActionWrappersMixin:
     def refresh_overdue(self):
         search_text = ""
         if hasattr(self, "overdue_search"):
-            search_text = normalize_whitespace(self.overdue_search.get())
+            search_text = normalize_whitespace(get_entry_value(self.overdue_search))
         refresh_overdue_action(
             app=self,
             db=self.db,

@@ -38,7 +38,7 @@ class BackupStartupMixin:
             return None
 
         for line in reversed(lines):
-            if "BACKUP_DB" not in line:
+            if "BACKUP_DB" not in line or "BACKUP_DB_ERROR" in line:
                 continue
             try:
                 timestamp_str = line.split("]", 1)[0].lstrip("[")

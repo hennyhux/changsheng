@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, timedelta
+import calendar
 import tkinter as tk
 from tkinter import messagebox
 
@@ -237,7 +238,8 @@ class DashboardMixin:
                     # Months fully covered by payments
                     paid_months = min(int(paid_total // rate), total_months)
                     due_y, due_m = add_months(start_d.year, start_d.month, paid_months)
-                    oldest_due = date(due_y, due_m, 1)
+                    last_day = calendar.monthrange(due_y, due_m)[1]
+                    oldest_due = date(due_y, due_m, min(start_d.day, last_day))
                 else:
                     oldest_due = start_d
 

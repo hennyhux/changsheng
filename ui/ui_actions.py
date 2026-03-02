@@ -17,7 +17,7 @@ from core.app_logging import trace, log_ux_action, get_trace_logger
 from core.error_handler import safe_ui_action, safe_ui_action_returning
 from dialogs.import_preview_dialog import show_import_preview
 from dialogs.payment_popup import show_payment_popup
-from ui.ui_helpers import create_date_input, make_optional_date_clear_on_blur
+from ui.ui_helpers import create_date_input, get_entry_value, make_optional_date_clear_on_blur
 from utils.validation import (
     normalize_whitespace,
     optional_phone,
@@ -1526,7 +1526,7 @@ def refresh_contracts_action(
     customer_filter_id: int | None = None,
     refresh_dependents: bool = True,
 ) -> None:
-    query_text = app.contract_search.get().strip().lower() if hasattr(app, "contract_search") else ""
+    query_text = get_entry_value(app.contract_search).strip().lower() if hasattr(app, "contract_search") else ""
     existing_items = app.contract_tree.get_children()
     if existing_items:
         app.contract_tree.delete(*existing_items)
@@ -2048,7 +2048,10 @@ def refresh_statement_action(
 
     contracts = db.get_contracts_for_statement()
 
-    payment_rows = db.get_paid_totals_by_contract()
+    payment_rows = db.get_paid_totals_by_contract_in_date_range(
+        month_start.isoformat(),
+        month_end.isoformat(),
+    )
     paid_by_contract = {int(row["contract_id"]): float(row["paid_total"]) for row in payment_rows}
 
     def _expected_for_month(month_start_local: date, month_end_local: date) -> float:
@@ -2102,9 +2105,7 @@ def refresh_statement_action(
         expected_total += expected_for_month
 
         contract_paid = paid_by_contract.get(int(row["contract_id"]), 0.0)
-        allocated_through_month = min(contract_paid, expected_through_month)
-        allocated_through_prev = min(contract_paid, expected_through_prev)
-        allocated_for_month = max(0.0, allocated_through_month - allocated_through_prev)
+        allocated_for_month = min(contract_paid, expected_for_month)
         if allocated_for_month > expected_for_month:
             allocated_for_month = expected_for_month
         paid_total += allocated_for_month
@@ -2403,7 +2404,7 @@ def refresh_invoices_action(
 
     customer_query = ""
     if hasattr(app, "invoice_customer_search"):
-        customer_query = normalize_whitespace(app.invoice_customer_search.get()).lower()
+        customer_query = normalize_whitespace(get_entry_value(app.invoice_customer_search)).lower()
 
     expanded_customers = set()
     selected_contract_id = None

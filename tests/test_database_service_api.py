@@ -179,6 +179,28 @@ class TestPaidTotals(_DBTestCase):
         paid_map = {int(r["contract_id"]): float(r["paid_total"]) for r in rows}
         self.assertAlmostEqual(paid_map.get(ct, 0), 300.0)
 
+    def test_get_paid_totals_by_contract_in_date_range(self):
+        c = self._add_customer()
+        ct = self._add_contract(c)
+        self.db.commit()
+        self._add_payment(ct, 120.0, "2024-03-01")
+        self._add_payment(ct, 80.0, "2024-03-15")
+        self._add_payment(ct, 50.0, "2024-04-01")
+
+        rows = self.db.get_paid_totals_by_contract_in_date_range("2024-03-01", "2024-03-31")
+        paid_map = {int(r["contract_id"]): float(r["paid_total"]) for r in rows}
+        self.assertAlmostEqual(paid_map.get(ct, 0), 200.0)
+
+    def test_get_paid_totals_by_contract_in_date_range_empty(self):
+        c = self._add_customer()
+        ct = self._add_contract(c)
+        self.db.commit()
+        self._add_payment(ct, 120.0, "2024-03-01")
+
+        rows = self.db.get_paid_totals_by_contract_in_date_range("2024-04-01", "2024-04-30")
+        paid_map = {int(r["contract_id"]): float(r["paid_total"]) for r in rows}
+        self.assertAlmostEqual(paid_map.get(ct, 0), 0.0)
+
     def test_as_of_date_filtering(self):
         """Payments after as_of date should not be included."""
         c = self._add_customer()

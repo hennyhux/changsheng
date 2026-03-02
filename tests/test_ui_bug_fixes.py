@@ -317,6 +317,14 @@ class TestReapplyInvoiceTreeSort(unittest.TestCase):
         source = inspect.getsource(mod.refresh_invoices_action)
         self.assertIn("_reapply_invoice_tree_sort", source)
 
+    def test_refresh_statement_uses_month_payment_range(self):
+        """Monthly statement paid total should use selected-month payments only."""
+        import inspect
+        import ui.ui_actions as mod
+
+        source = inspect.getsource(mod.refresh_statement_action)
+        self.assertIn("get_paid_totals_by_contract_in_date_range", source)
+
 
 # ---------------------------------------------------------------------------
 # 8. Muted foreground restored on dark→light round-trip
@@ -529,6 +537,72 @@ class TestBillingTabRefreshOnSwitch(unittest.TestCase):
         mixin._on_tab_changed(MagicMock())
 
         mixin._on_billing_tab_changed.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Placeholder text must not be used as search filter (billing-empty-on-load bug)
+# ---------------------------------------------------------------------------
+class TestPlaceholderNotUsedAsFilter(unittest.TestCase):
+    """Regression: placeholder text like 'Filter by customer...' was read via
+    .get() and treated as a real search query, hiding all billing rows."""
+
+    def test_refresh_invoices_uses_get_entry_value(self):
+        """refresh_invoices_action must use get_entry_value, not raw .get()."""
+        import inspect
+        from ui.ui_actions import refresh_invoices_action
+
+        src = inspect.getsource(refresh_invoices_action)
+        self.assertIn("get_entry_value", src)
+        self.assertNotIn("invoice_customer_search.get()", src)
+
+    def test_refresh_overdue_uses_get_entry_value(self):
+        """refresh_overdue wrapper must use get_entry_value, not raw .get()."""
+        import inspect
+        from app.action_wrappers import ActionWrappersMixin
+
+        src = inspect.getsource(ActionWrappersMixin.refresh_overdue)
+        self.assertIn("get_entry_value", src)
+        self.assertNotIn("overdue_search.get()", src)
+
+    def test_refresh_contracts_uses_get_entry_value(self):
+        """refresh_contracts_action must use get_entry_value, not raw .get()."""
+        import inspect
+        from ui.ui_actions import refresh_contracts_action
+
+        src = inspect.getsource(refresh_contracts_action)
+        self.assertIn("get_entry_value", src)
+        self.assertNotIn("contract_search.get()", src)
+
+    def test_sync_search_boxes_uses_get_entry_value(self):
+        """_sync_search_boxes_from_truck_search must use get_entry_value."""
+        import inspect
+        from app.mixins.trucks_tab_mixin import TrucksTabMixin
+
+        src = inspect.getsource(TrucksTabMixin._sync_search_boxes_from_truck_search)
+        self.assertIn("get_entry_value", src)
+        # Raw .get() should only remain for truck_search (no placeholder)
+        self.assertNotIn("contract_search.get()", src)
+        self.assertNotIn("invoice_customer_search.get()", src)
+
+    def test_get_entry_value_returns_empty_for_placeholder(self):
+        """get_entry_value returns '' when placeholder is active."""
+        from ui.ui_helpers import get_entry_value
+        from unittest.mock import MagicMock
+
+        entry = MagicMock()
+        entry._has_placeholder = True
+        entry.get.return_value = "Filter by customer..."
+        self.assertEqual(get_entry_value(entry), "")
+
+    def test_get_entry_value_returns_text_when_no_placeholder(self):
+        """get_entry_value returns the actual text when user has typed."""
+        from ui.ui_helpers import get_entry_value
+        from unittest.mock import MagicMock
+
+        entry = MagicMock()
+        entry._has_placeholder = False
+        entry.get.return_value = "John"
+        self.assertEqual(get_entry_value(entry), "John")
 
 
 if __name__ == "__main__":

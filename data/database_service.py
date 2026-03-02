@@ -968,6 +968,19 @@ class DatabaseService:
         )
 
     @trace
+    def get_paid_totals_by_contract_in_date_range(self, start_iso: str, end_iso: str) -> list[sqlite3.Row]:
+        return self.fetchall(
+            """
+            SELECT i.contract_id, COALESCE(SUM(p.amount), 0) AS paid_total
+            FROM payments p
+            JOIN invoices i ON i.id = p.invoice_id
+            WHERE DATE(p.paid_at) >= ? AND DATE(p.paid_at) <= ?
+            GROUP BY i.contract_id
+            """,
+            (start_iso, end_iso),
+        )
+
+    @trace
     def get_paid_totals_by_customer_as_of(self, customer_id: int, as_of_iso: str) -> list[sqlite3.Row]:
         return self.fetchall(
             """
