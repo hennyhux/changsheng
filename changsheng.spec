@@ -4,10 +4,11 @@ PyInstaller spec file for Changsheng - Truck Lot Tracker
 Builds a standalone Windows executable with all dependencies bundled
 """
 
-import sys
+import os
 from PyInstaller.utils.hooks import collect_submodules, collect_all
 
 block_cipher = None
+PROJECT_ROOT = os.path.abspath(os.getcwd())
 
 
 def _extend_package_bundle(package_name: str, hidden_imports: list[str], datas: list[tuple], binaries: list[tuple]) -> None:
@@ -32,8 +33,8 @@ hidden_imports = [
 ]
 
 datas = [
-    ('app/logo.png', 'app'),
-    ('app/logo.png', '.'),
+    (os.path.join(PROJECT_ROOT, 'app', 'logo.png'), 'app'),
+    (os.path.join(PROJECT_ROOT, 'app', 'logo.png'), '.'),
 ]
 binaries = []
 
@@ -62,7 +63,7 @@ binaries = list(dict.fromkeys(binaries))
 
 a = Analysis(
     ['changsheng.py'],
-    pathex=[],
+    pathex=[PROJECT_ROOT],
     binaries=binaries,
     datas=datas,
     hiddenimports=hidden_imports,
