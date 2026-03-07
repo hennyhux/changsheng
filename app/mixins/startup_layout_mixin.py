@@ -10,6 +10,7 @@ from tabs.customers_tab import build_customers_tab
 from tabs.dashboard_tab import build_dashboard_tab
 from tabs.histories_tab import build_histories_tab
 from tabs.trucks_tab import build_trucks_tab
+from tabs.usdot_tab import build_usdot_tab
 from core.config import DB_PATH, WINDOW_HEIGHT, WINDOW_WIDTH, THEME_PALETTES
 
 
@@ -36,6 +37,7 @@ class StartupLayoutMixin:
         self._truck_search_after_id = None
         self._invoice_search_after_id = None
         self._overdue_search_after_id = None
+        self._usdot_search_after_id = None
         self.title("Changsheng - Truck Lot Tracker")
         self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self._set_startup_fullscreen()
@@ -105,23 +107,26 @@ class StartupLayoutMixin:
 
         self.tab_dashboard = ttk.Frame(notebook)
         self.tab_customers = ttk.Frame(notebook)
-        self.tab_trucks = ttk.Frame(notebook)
+        self.tab_usdot = ttk.Frame(notebook)
         self.tab_contracts = ttk.Frame(notebook)
         self.tab_billing = ttk.Frame(notebook)
+        self.tab_trucks = ttk.Frame(notebook)
         self.tab_histories = ttk.Frame(notebook)
 
         notebook.add(self.tab_dashboard, text="📈 Dashboard")
         notebook.add(self.tab_customers, text="👥 Customers")
-        notebook.add(self.tab_trucks, text="🚚 Trucks")
+        notebook.add(self.tab_usdot, text="🪪 USDOT")
         notebook.add(self.tab_contracts, text="📝 Contracts")
         notebook.add(self.tab_billing, text="💵 Billing")
+        notebook.add(self.tab_trucks, text="🚚 Trucks")
         notebook.add(self.tab_histories, text="🕑 Histories")
 
         build_dashboard_tab(self, self.tab_dashboard)
         build_customers_tab(self, self.tab_customers)
-        build_trucks_tab(self, self.tab_trucks)
+        build_usdot_tab(self, self.tab_usdot)
         build_contracts_tab(self, self.tab_contracts)
         build_billing_tab(self, self.tab_billing)
+        build_trucks_tab(self, self.tab_trucks)
         build_histories_tab(self, self.tab_histories)
 
         self._setup_right_click_menus()
@@ -136,6 +141,7 @@ class StartupLayoutMixin:
     def _initial_loads(self):
         self.refresh_customers()
         self.refresh_trucks()
+        self.refresh_usdots()
         self.refresh_contracts()
         self.refresh_invoices()
         self.refresh_statement()

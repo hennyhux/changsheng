@@ -34,7 +34,7 @@ class CustomersTabMixin:
         has_selection = bool(self.customer_tree.selection()) if hasattr(self, "customer_tree") else False
         self.view_trucks_btn.configure(state=("normal" if has_selection else "disabled"))
 
-    def _view_selected_customer_trucks(self):
+    def _view_selected_customer_usdot(self):
         sel = self.customer_tree.selection()
         if not sel:
             messagebox.showwarning("No Selection", "Select a customer row first.")
@@ -45,30 +45,30 @@ class CustomersTabMixin:
         if not values:
             return
 
-        customer_id = int(values[0])
         customer_name = str(values[1])
 
-        self.main_notebook.select(self.tab_trucks)
-        self.truck_search.delete(0, tk.END)
-        self.truck_search.insert(0, customer_name)
-        self.truck_search.focus_set()
-        self.truck_search.icursor(tk.END)
-        self._sync_search_boxes_from_truck_search(force=True)
-        self._truck_search_mode = "customer_name"
-        self._truck_filter_customer_id = customer_id
-        self.refresh_trucks()
+        if not hasattr(self, "tab_usdot"):
+            messagebox.showwarning("Missing Tab", "USDOT tab is not available.")
+            return
 
-        if hasattr(self, "truck_customer_combo"):
-            self._set_combo_by_customer_id(self.truck_customer_combo, customer_id)
+        self.main_notebook.select(self.tab_usdot)
+        if hasattr(self, "usdot_search"):
+            self.usdot_search.delete(0, tk.END)
+            self.usdot_search.insert(0, customer_name)
+            self.usdot_search.focus_set()
+            self.usdot_search.icursor(tk.END)
 
-        truck_rows = self.truck_tree.get_children("")
-        if truck_rows:
-            first_iid = truck_rows[0]
-            self.truck_tree.selection_set(first_iid)
-            self.truck_tree.focus(first_iid)
-            self.truck_tree.see(first_iid)
-        else:
-            messagebox.showinfo("No Trucks", f"No trucks found for customer '{customer_name}'.")
+        self.refresh_usdots()
+
+        if hasattr(self, "usdot_tree"):
+            usdot_rows = self.usdot_tree.get_children("")
+            if usdot_rows:
+                first_iid = usdot_rows[0]
+                self.usdot_tree.selection_set(first_iid)
+                self.usdot_tree.focus(first_iid)
+                self.usdot_tree.see(first_iid)
+            else:
+                messagebox.showinfo("No USDOT", f"No USDOT records found for customer '{customer_name}'.")
 
     def _set_selected_customer(self, customer_id: int):
         if hasattr(self, "truck_customer_combo"):

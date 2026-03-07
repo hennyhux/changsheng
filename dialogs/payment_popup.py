@@ -31,7 +31,7 @@ def show_payment_popup(
     popup_height = max(520, int(base_font_size * 36))
 
     popup = tk.Toplevel(parent)
-    title_suffix = f" - Plate {plate_label}" if plate_label else ""
+    title_suffix = f" - USDOT {plate_label}" if plate_label else ""
     popup.title(f"Record Payment{title_suffix}")
     popup.geometry(f"{popup_width}x{popup_height}")
     popup.minsize(max(860, popup_width - 80), max(500, popup_height - 60))
@@ -62,7 +62,7 @@ def show_payment_popup(
     main.columnconfigure(0, minsize=260)
     main.columnconfigure(1, weight=1)
 
-    ttk.Label(main, text="Plate:", font=heading_font).grid(row=0, column=0, sticky="w", padx=(0, 14), pady=(0, 14))
+    ttk.Label(main, text="USDOT:", font=heading_font).grid(row=0, column=0, sticky="w", padx=(0, 14), pady=(0, 14))
     ttk.Label(main, text=(plate_label or "(customer-level)"), font=base_font).grid(row=0, column=1, sticky="w", pady=(0, 14))
 
     ttk.Label(main, text="Outstanding Balance:", font=heading_font).grid(row=1, column=0, sticky="w", padx=(0, 14), pady=(0, 14))

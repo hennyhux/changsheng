@@ -245,6 +245,79 @@ class TestGetOrCreateAnchorInvoice(_DBTestCase):
 
 
 # ---------------------------------------------------------------------------
+# USDOT linkage
+# ---------------------------------------------------------------------------
+
+class TestUsdotLinkage(_DBTestCase):
+    def test_create_usdot_account_can_link_driver(self):
+        cid = self._add_customer(name="Driver One")
+        usdot_id = self.db.create_usdot_account("USDOT-777", cid, "Carrier A", "5551112222", None, self._now)
+        self.db.commit()
+
+        row = self.db.get_usdot_account_basic_by_id(usdot_id)
+        self.assertIsNotNone(row)
+        self.assertEqual(row["customer_id"], cid)
+
+    def test_get_usdot_accounts_with_usage_includes_driver_name(self):
+        cid = self._add_customer(name="Driver Two")
+        usdot_id = self.db.create_usdot_account("USDOT-888", cid, None, None, None, self._now)
+        self.db.commit()
+
+        rows = self.db.get_usdot_accounts_with_usage(q="Driver Two", limit=50)
+        self.assertTrue(any(int(row["id"]) == usdot_id and row["driver_name"] == "Driver Two" for row in rows))
+
+    def test_create_truck_allows_null_usdot_link(self):
+        cid = self._add_customer()
+        truck_id = self.db.create_truck(cid, "USDOT-123", "TX", "Ford", "F-150", None, self._now)
+        self.db.commit()
+
+        row = self.db.fetchone(
+            """
+            SELECT t.usdot_account_id, u.usdot_number
+            FROM trucks t
+            LEFT JOIN usdot_accounts u ON u.id=t.usdot_account_id
+            WHERE t.id=?
+            """,
+            (truck_id,),
+        )
+        self.assertIsNotNone(row)
+        self.assertIsNone(row["usdot_account_id"])
+        self.assertIsNone(row["usdot_number"])
+
+    def test_create_contract_uses_explicit_usdot(self):
+        cid = self._add_customer()
+        usdot_id = self.db.create_usdot_account("USDOT-999", cid, None, None, None, self._now)
+        truck_id = self.db.create_truck(cid, "TRK-001", "TX", "Ford", "F-150", None, self._now, usdot_account_id=usdot_id)
+        self.db.commit()
+
+        ct_id = self.db.create_contract(
+            customer_id=cid,
+            truck_id=None,
+            monthly_rate=500.0,
+            start_ym="2024-01",
+            end_ym=None,
+            start_date="2024-01-01",
+            end_date=None,
+            is_active=1,
+            notes=None,
+            created_at=self._now,
+            usdot_account_id=usdot_id,
+        )
+        self.db.commit()
+
+        row = self.db.fetchone(
+            """
+            SELECT ct.usdot_account_id
+            FROM contracts ct
+            WHERE ct.id=?
+            """,
+            (ct_id,),
+        )
+        self.assertIsNotNone(row)
+        self.assertEqual(row["usdot_account_id"], usdot_id)
+
+
+# ---------------------------------------------------------------------------
 # delete_payments_by_contract
 # ---------------------------------------------------------------------------
 

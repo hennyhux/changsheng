@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import date
-from tkinter import messagebox
 
 from core.config import TAG_COLORS, HISTORY_LOG_FILE
 from core.app_logging import trace
@@ -10,8 +9,10 @@ from invoicing.invoice_generator import build_invoice_groups, build_pdf_invoice_
 from invoicing.invoice_pdf import render_invoice_pdf, reportlab_available
 from invoicing.ledger_export import export_customer_ledger_xlsx
 from ui.ui_actions import (
+    add_usdot_action,
     add_customer_action,
     add_truck_action,
+    edit_selected_usdot_action,
     backup_database_action,
     create_contract_action,
     clear_invoice_customer_search_action,
@@ -43,6 +44,7 @@ from ui.ui_actions import (
     sync_selected_customer_to_forms_action,
     tab_has_unsaved_data_action,
     toggle_contract_action,
+    refresh_usdots_action,
     refresh_customers_action,
     refresh_trucks_action,
 )
@@ -52,6 +54,43 @@ from utils.validation import normalize_whitespace
 
 
 class ActionWrappersMixin:
+    @trace
+    def refresh_usdots(self):
+        refresh_usdots_action(
+            app=self,
+            db=self.db,
+            show_invalid_cb=self._show_invalid,
+            row_stripe_tag_cb=self._row_stripe_tag,
+            outstanding_tag_from_amount_cb=self._outstanding_tag_from_amount,
+        )
+
+    @trace
+    def add_usdot(self):
+        add_usdot_action(
+            app=self,
+            db=self.db,
+            get_entry_value_cb=get_entry_value,
+            get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
+            clear_inline_errors_cb=clear_inline_errors,
+            show_inline_error_cb=show_inline_error,
+            show_invalid_cb=self._show_invalid,
+            add_placeholder_cb=add_placeholder,
+            log_action_cb=self._log_action,
+        )
+
+    @trace
+    def edit_selected_usdot(self):
+        edit_selected_usdot_action(
+            app=self,
+            db=self.db,
+            get_entry_value_cb=get_entry_value,
+            get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
+            clear_inline_errors_cb=clear_inline_errors,
+            show_inline_error_cb=show_inline_error,
+            show_invalid_cb=self._show_invalid,
+            log_action_cb=self._log_action,
+        )
+
     @trace
     def backup_database(self):
         backup_database_action(
@@ -213,12 +252,12 @@ class ActionWrappersMixin:
             app=self,
             db=self.db,
             get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
-            get_selected_truck_id_cb=self._get_selected_truck_id_from_combo,
             get_entry_value_cb=get_entry_value,
             clear_inline_errors_cb=clear_inline_errors,
             show_inline_error_cb=show_inline_error,
             show_invalid_cb=self._show_invalid,
             log_action_cb=self._log_action,
+            get_selected_usdot_account_id_cb=self._get_selected_usdot_account_id_from_combo,
         )
 
     @trace
@@ -234,7 +273,6 @@ class ActionWrappersMixin:
             app=self,
             db=self.db,
             get_selected_customer_id_cb=self._get_selected_customer_id_from_combo,
-            get_selected_truck_id_cb=self._get_selected_truck_id_from_combo,
             show_invalid_cb=self._show_invalid,
             log_action_cb=self._log_action,
         )

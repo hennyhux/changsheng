@@ -63,7 +63,7 @@ def build_invoices_tab(app, frame):
 
     ttk.Label(
         action_bar,
-        text="  ← Select a customer or plate row in the table below, then click an action",
+        text="  ← Select a customer or USDOT row in the table below, then click an action",
         foreground="#777777",
         font=(FONTS["base"][0], max(FONTS["base"][1] - 1, 9), "italic"),
     ).grid(row=0, column=4, sticky="w", padx=12)
@@ -73,7 +73,7 @@ def build_invoices_tab(app, frame):
     invoice_headings = {
         "contract_id": "",
         "customer": "Customer",
-        "scope": "Plate",
+        "scope": "USDOT",
         "rate": "Rate",
         "start": "Start",
         "end": "End",

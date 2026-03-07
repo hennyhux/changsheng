@@ -192,7 +192,7 @@ class ThemeLanguageMixin:
                 logger.debug(f"Failed to apply menu theme on {menu_name}: {exc}")
 
     def _refresh_tree_theme_tags(self):
-        for tree_name in ("customer_tree", "truck_tree", "contract_tree", "invoice_tree", "overdue_tree"):
+        for tree_name in ("customer_tree", "truck_tree", "contract_tree", "invoice_tree", "overdue_tree", "usdot_tree"):
             if hasattr(self, tree_name):
                 self._init_tree_striping(getattr(self, tree_name))
 
@@ -206,6 +206,7 @@ class ThemeLanguageMixin:
         palette = self._theme_palette
         tree.tag_configure("row_even", background=palette["stripe_even"])
         tree.tag_configure("row_odd", background=palette["stripe_odd"])
+        tree.tag_configure("row_fg", foreground=palette["tree_fg"], font=FONTS["tree_bold"])
         tree.tag_configure("bal_zero", foreground=palette["status_bal_zero"], font=FONTS["tree_bold"])
         tree.tag_configure("bal_no_contract", foreground=palette["status_bal_no_contract"], font=FONTS["tree_bold"])
         tree.tag_configure("bal_due", foreground=palette["status_bal_due"], font=FONTS["tree_bold"])
@@ -266,17 +267,19 @@ class ThemeLanguageMixin:
 
     def _apply_tree_headings_language(self):
         if self.current_language == "zh":
-            customer_headings = {"id": "编号", "name": "姓名", "phone": "电话", "company": "公司", "notes": "备注", "outstanding": "欠款", "trucks": "车辆数"}
-            truck_headings = {"id": "编号", "plate": "车牌", "state": "州", "make": "品牌", "model": "型号", "customer": "客户", "outstanding": "欠款"}
-            contract_headings = {"contract_id": "合同编号", "status": "状态", "customer": "客户", "scope": "车牌", "rate": "费率", "start": "开始", "end": "结束", "outstanding": "欠款"}
-            invoice_headings = {"contract_id": "", "customer": "客户", "scope": "车牌", "rate": "费率", "start": "开始", "end": "结束", "months": "累计月数", "expected": "应收", "paid": "已付", "balance": "余额", "status": "状态"}
+            customer_headings = {"id": "编号", "name": "姓名", "phone": "电话", "company": "公司", "notes": "备注", "outstanding": "欠款"}
+            truck_headings = {"id": "编号", "plate": "USDOT号", "state": "州", "make": "品牌", "model": "型号", "customer": "客户", "outstanding": "欠款"}
+            contract_headings = {"contract_id": "合同编号", "status": "状态", "customer": "客户", "scope": "USDOT号", "rate": "费率", "start": "开始", "end": "结束", "outstanding": "欠款"}
+            invoice_headings = {"contract_id": "", "customer": "客户", "scope": "USDOT号", "rate": "费率", "start": "开始", "end": "结束", "months": "累计月数", "expected": "应收", "paid": "已付", "balance": "余额", "status": "状态"}
             overdue_headings = {"month": "月份", "date": "日期", "invoice_id": "合同编号", "customer": "客户", "scope": "范围", "amount": "金额", "paid": "已付", "balance": "余额"}
+            usdot_headings = {"id": "编号", "usdot_number": "USDOT号", "driver": "司机", "legal_name": "法定名称", "phone": "电话", "notes": "备注", "trucks": "关联车辆", "contracts": "关联合同"}
         else:
-            customer_headings = {"id": "ID", "name": "Name", "phone": "Phone", "company": "Company", "notes": "Notes", "outstanding": "Outstanding", "trucks": "Trucks Parked"}
-            truck_headings = {"id": "ID", "plate": "Plate", "state": "State", "make": "Make", "model": "Model", "customer": "Customer", "outstanding": "Outstanding"}
-            contract_headings = {"contract_id": "Contract ID", "status": "Status", "customer": "Customer", "scope": "Plate", "rate": "Rate", "start": "Start", "end": "End", "outstanding": "Outstanding"}
-            invoice_headings = {"contract_id": "", "customer": "Customer", "scope": "Plate", "rate": "Rate", "start": "Start", "end": "End", "months": "Elapsed Months", "expected": "Expected", "paid": "Paid", "balance": "Outstanding", "status": "Status"}
+            customer_headings = {"id": "ID", "name": "Name", "phone": "Phone", "company": "Company", "notes": "Notes", "outstanding": "Outstanding"}
+            truck_headings = {"id": "ID", "plate": "USDOT", "state": "State", "make": "Make", "model": "Model", "customer": "Customer", "outstanding": "Outstanding"}
+            contract_headings = {"contract_id": "Contract ID", "status": "Status", "customer": "Customer", "scope": "USDOT", "rate": "Rate", "start": "Start", "end": "End", "outstanding": "Outstanding"}
+            invoice_headings = {"contract_id": "", "customer": "Customer", "scope": "USDOT", "rate": "Rate", "start": "Start", "end": "End", "months": "Elapsed Months", "expected": "Expected", "paid": "Paid", "balance": "Outstanding", "status": "Status"}
             overdue_headings = {"month": "Month", "date": "Date", "invoice_id": "Contract ID", "customer": "Customer", "scope": "Scope", "amount": "Amount", "paid": "Paid", "balance": "Balance"}
+            usdot_headings = {"id": "ID", "usdot_number": "USDOT", "driver": "Driver", "legal_name": "Legal Name", "phone": "Phone", "notes": "Notes", "trucks": "Linked Trucks", "contracts": "Linked Contracts"}
 
         def apply_headings(tree: ttk.Treeview, headings: dict[str, str]):
             available = set(tree["columns"])
@@ -288,6 +291,8 @@ class ThemeLanguageMixin:
         apply_headings(self.truck_tree, truck_headings)
         apply_headings(self.contract_tree, contract_headings)
         apply_headings(self.invoice_tree, invoice_headings)
+        if hasattr(self, "usdot_tree"):
+            apply_headings(self.usdot_tree, usdot_headings)
         if hasattr(self, "overdue_tree"):
             apply_headings(self.overdue_tree, overdue_headings)
         if hasattr(self, "dashboard_search_tree"):
@@ -313,6 +318,8 @@ class ThemeLanguageMixin:
             self.main_notebook.tab(self.tab_dashboard, text=("📈 仪表盘" if language == "zh" else "📈 Dashboard"))
             self.main_notebook.tab(self.tab_customers, text=("👥 客户" if language == "zh" else "👥 Customers"))
             self.main_notebook.tab(self.tab_trucks, text=("🚚 卡车" if language == "zh" else "🚚 Trucks"))
+            if hasattr(self, "tab_usdot"):
+                self.main_notebook.tab(self.tab_usdot, text=("🪪 USDOT号" if language == "zh" else "🪪 USDOT"))
             self.main_notebook.tab(self.tab_contracts, text=("📝 合同" if language == "zh" else "📝 Contracts"))
             self.main_notebook.tab(self.tab_billing, text=("💵 账务" if language == "zh" else "💵 Billing"))
             self.main_notebook.tab(self.tab_histories, text=("🕑 历史记录" if language == "zh" else "🕑 Histories"))
@@ -343,9 +350,8 @@ class ThemeLanguageMixin:
             self.customer_menu.entryconfigure(6, label=("刷新" if zh else "Refresh"))
 
         if hasattr(self, "truck_menu"):
-            self.truck_menu.entryconfigure(0, label=("查看合同历史" if zh else "View Contract History"))
-            self.truck_menu.entryconfigure(2, label=("删除选中" if zh else "Delete Selected"))
-            self.truck_menu.entryconfigure(4, label=("刷新" if zh else "Refresh"))
+            self.truck_menu.entryconfigure(0, label=("删除选中" if zh else "Delete Selected"))
+            self.truck_menu.entryconfigure(2, label=("刷新" if zh else "Refresh"))
 
         if hasattr(self, "contract_menu"):
             self.contract_menu.entryconfigure(0, label=("查看付款历史" if zh else "View Payment History"))

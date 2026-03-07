@@ -116,7 +116,6 @@ class TestCreateContractRefreshCascade(unittest.TestCase):
 
         log_cb = MagicMock()
         customer_cb = MagicMock(return_value=1)
-        truck_cb = MagicMock(return_value=None)
         get_entry_cb = MagicMock(side_effect=lambda e: "500")
         clear_cb = MagicMock()
         show_inline_cb = MagicMock()
@@ -126,7 +125,6 @@ class TestCreateContractRefreshCascade(unittest.TestCase):
             app=app,
             db=db,
             get_selected_customer_id_cb=customer_cb,
-            get_selected_truck_id_cb=truck_cb,
             get_entry_value_cb=get_entry_cb,
             clear_inline_errors_cb=clear_cb,
             show_inline_error_cb=show_inline_cb,

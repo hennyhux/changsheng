@@ -267,6 +267,8 @@ class DashboardMixin:
         """Optimized batch refresh after truck add/delete. Avoids redundant queries."""
         self.refresh_customers()
         self.refresh_trucks()
+        if hasattr(self, "refresh_usdots"):
+            self.refresh_usdots()
         self.refresh_contracts(refresh_dependents=False)
         self.refresh_invoices()
         self.refresh_overdue()

@@ -18,7 +18,6 @@ from tkinter import messagebox
 # Import the structured loggers
 from core.app_logging import (
     get_exception_logger,
-    get_ux_logger,
     log_ux_action,
     log_ux_action_result,
     log_exception as _log_exc_to_file,
@@ -26,7 +25,6 @@ from core.app_logging import (
 
 logger = logging.getLogger("changsheng_app")
 _exc_logger = get_exception_logger()
-_ux_logger = get_ux_logger()
 
 # Type variable for decorating any callable
 F = TypeVar("F", bound=Callable[..., Any])

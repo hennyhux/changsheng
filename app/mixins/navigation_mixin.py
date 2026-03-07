@@ -27,6 +27,8 @@ class NavigationMixin:
             return getattr(self, "customer_search", None)
         if selected_tab == str(self.tab_trucks):
             return getattr(self, "truck_search", None)
+        if hasattr(self, "tab_usdot") and selected_tab == str(self.tab_usdot):
+            return getattr(self, "usdot_search", None)
         if selected_tab == str(self.tab_contracts):
             return getattr(self, "contract_search", None)
         if selected_tab == str(self.tab_histories):
@@ -63,6 +65,8 @@ class NavigationMixin:
             self.refresh_customers()
         elif selected_tab == str(self.tab_trucks):
             self.refresh_trucks()
+        elif hasattr(self, "tab_usdot") and selected_tab == str(self.tab_usdot):
+            self.refresh_usdots()
         elif selected_tab == str(self.tab_contracts):
             self.refresh_contracts()
         elif selected_tab == str(self.tab_histories):
@@ -87,6 +91,9 @@ class NavigationMixin:
             return "break"
         if selected_tab == str(self.tab_trucks):
             self._clear_truck_search()
+            return "break"
+        if hasattr(self, "tab_usdot") and selected_tab == str(self.tab_usdot):
+            self._clear_usdot_search()
             return "break"
         if selected_tab == str(self.tab_contracts):
             self._clear_contract_search()

@@ -9,7 +9,37 @@ def build_histories_tab(app, frame):
     frame.rowconfigure(1, weight=1)
     top_bar = ttk.Frame(frame)
     top_bar.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 0))
+    top_bar.columnconfigure(5, weight=1)
     ttk.Label(top_bar, text="Blackbox Log (all actions and events)", font=("Segoe UI", 14, "bold")).pack(side="left")
+    ttk.Label(top_bar, text="Quick type:").pack(side="left", padx=(14, 4))
+    app.histories_statement_type = ttk.Combobox(
+        top_bar,
+        width=24,
+        state="readonly",
+        values=("(Any)",),
+    )
+    app.histories_statement_type.set("(Any)")
+    app.histories_statement_type.pack(side="left")
+
+    def _on_statement_type_selected(_event=None):
+        selected = app.histories_statement_type.get().strip()
+        app.histories_filter.delete(0, tk.END)
+        if selected and selected != "(Any)":
+            app.histories_filter.insert(0, selected)
+        app.refresh_histories()
+
+    app.histories_statement_type.bind("<<ComboboxSelected>>", _on_statement_type_selected)
+
+    ttk.Label(top_bar, text="Filter statement:").pack(side="left", padx=(14, 4))
+    app.histories_filter = ttk.Entry(top_bar, width=26)
+    app.histories_filter.pack(side="left")
+    app.histories_filter.bind("<Return>", lambda _e: app.refresh_histories())
+    ttk.Button(top_bar, text="Apply", command=app.refresh_histories).pack(side="left", padx=(6, 4))
+    ttk.Button(
+        top_bar,
+        text="Clear",
+        command=lambda: (app.histories_filter.delete(0, tk.END), app.refresh_histories()),
+    ).pack(side="left")
     ttk.Button(top_bar, text="Refresh", command=app.refresh_histories).pack(side="right")
     app.histories_text = tk.Text(frame, wrap="none", state="disabled", font=("Consolas", 10))
     app.histories_text.grid(row=1, column=0, sticky="nsew", padx=(10, 0), pady=10)

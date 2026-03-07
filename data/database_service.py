@@ -92,8 +92,189 @@ class DatabaseService:
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_customer_id ON contracts(customer_id)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_truck_id ON contracts(truck_id)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_contract_id ON invoices(contract_id)")
+        self._ensure_usdot_schema()
 
         self.conn.commit()
+
+    def _ensure_usdot_schema(self) -> None:
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS usdot_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usdot_number TEXT NOT NULL UNIQUE CHECK (LENGTH(TRIM(usdot_number)) > 0),
+                customer_id INTEGER,
+                legal_name TEXT,
+                phone TEXT,
+                notes TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
+            )
+            """
+        )
+
+        usdot_columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(usdot_accounts)").fetchall()}
+        if "customer_id" not in usdot_columns:
+            self.conn.execute("ALTER TABLE usdot_accounts ADD COLUMN customer_id INTEGER")
+
+        truck_columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(trucks)").fetchall()}
+        if "usdot_account_id" not in truck_columns:
+            self.conn.execute("ALTER TABLE trucks ADD COLUMN usdot_account_id INTEGER")
+
+        contract_columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(contracts)").fetchall()}
+        if "usdot_account_id" not in contract_columns:
+            self.conn.execute("ALTER TABLE contracts ADD COLUMN usdot_account_id INTEGER")
+
+        self.conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_usdot_number_unique ON usdot_accounts(usdot_number)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_usdot_accounts_customer_id ON usdot_accounts(customer_id)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_trucks_usdot_account_id ON trucks(usdot_account_id)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_usdot_account_id ON contracts(usdot_account_id)")
+
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO usdot_accounts(usdot_number, legal_name, phone, notes, created_at)
+            SELECT DISTINCT UPPER(TRIM(t.plate)), NULL, NULL, NULL, COALESCE(t.created_at, CURRENT_TIMESTAMP)
+            FROM trucks t
+            WHERE t.plate IS NOT NULL AND TRIM(t.plate) <> ''
+            """
+        )
+
+        self.conn.execute(
+            """
+            UPDATE trucks
+            SET usdot_account_id = (
+                SELECT ua.id
+                FROM usdot_accounts ua
+                WHERE ua.usdot_number = UPPER(TRIM(trucks.plate))
+                LIMIT 1
+            )
+            WHERE (usdot_account_id IS NULL OR usdot_account_id = 0)
+              AND plate IS NOT NULL AND TRIM(plate) <> ''
+            """
+        )
+
+        self.conn.execute(
+            """
+            UPDATE contracts
+            SET usdot_account_id = (
+                SELECT t.usdot_account_id
+                FROM trucks t
+                WHERE t.id = contracts.truck_id
+                LIMIT 1
+            )
+            WHERE contracts.truck_id IS NOT NULL
+              AND (contracts.usdot_account_id IS NULL OR contracts.usdot_account_id = 0)
+            """
+        )
+
+        self.conn.execute(
+            """
+            UPDATE usdot_accounts
+            SET customer_id = COALESCE(
+                (
+                    SELECT t.customer_id
+                    FROM trucks t
+                    WHERE t.usdot_account_id = usdot_accounts.id
+                      AND t.customer_id IS NOT NULL
+                    ORDER BY t.id ASC
+                    LIMIT 1
+                ),
+                (
+                    SELECT ct.customer_id
+                    FROM contracts ct
+                    WHERE ct.usdot_account_id = usdot_accounts.id
+                      AND ct.customer_id IS NOT NULL
+                    ORDER BY ct.id ASC
+                    LIMIT 1
+                )
+            )
+            WHERE customer_id IS NULL OR customer_id = 0
+            """
+        )
+
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO usdot_accounts(usdot_number, legal_name, phone, notes, created_at)
+            SELECT DISTINCT
+                'CUST-' || CAST(ct.customer_id AS TEXT),
+                NULL,
+                NULL,
+                'Auto-created for customer-level contract',
+                COALESCE(ct.created_at, CURRENT_TIMESTAMP)
+            FROM contracts ct
+            WHERE (ct.usdot_account_id IS NULL OR ct.usdot_account_id = 0)
+              AND ct.customer_id IS NOT NULL
+            """
+        )
+
+        self.conn.execute(
+            """
+            UPDATE contracts
+            SET usdot_account_id = (
+                SELECT ua.id
+                FROM usdot_accounts ua
+                WHERE ua.usdot_number = 'CUST-' || CAST(contracts.customer_id AS TEXT)
+                LIMIT 1
+            )
+            WHERE (contracts.usdot_account_id IS NULL OR contracts.usdot_account_id = 0)
+              AND contracts.customer_id IS NOT NULL
+            """
+        )
+
+        self.conn.execute(
+            """
+            CREATE TRIGGER IF NOT EXISTS trg_contract_usdot_match_insert
+            BEFORE INSERT ON contracts
+            BEGIN
+                SELECT CASE
+                    WHEN NEW.usdot_account_id IS NULL
+                    THEN RAISE(ABORT, 'Contract USDOT is required')
+                END;
+
+                SELECT CASE
+                    WHEN NEW.truck_id IS NOT NULL
+                         AND (
+                             SELECT t.usdot_account_id
+                             FROM trucks t
+                             WHERE t.id = NEW.truck_id
+                         ) IS NOT NULL
+                         AND (
+                             SELECT t.usdot_account_id
+                             FROM trucks t
+                             WHERE t.id = NEW.truck_id
+                         ) <> NEW.usdot_account_id
+                    THEN RAISE(ABORT, 'Contract truck/USDOT mismatch')
+                END;
+            END
+            """
+        )
+
+        self.conn.execute(
+            """
+            CREATE TRIGGER IF NOT EXISTS trg_contract_usdot_match_update
+            BEFORE UPDATE ON contracts
+            BEGIN
+                SELECT CASE
+                    WHEN NEW.usdot_account_id IS NULL
+                    THEN RAISE(ABORT, 'Contract USDOT is required')
+                END;
+
+                SELECT CASE
+                    WHEN NEW.truck_id IS NOT NULL
+                         AND (
+                             SELECT t.usdot_account_id
+                             FROM trucks t
+                             WHERE t.id = NEW.truck_id
+                         ) IS NOT NULL
+                         AND (
+                             SELECT t.usdot_account_id
+                             FROM trucks t
+                             WHERE t.id = NEW.truck_id
+                         ) <> NEW.usdot_account_id
+                    THEN RAISE(ABORT, 'Contract truck/USDOT mismatch')
+                END;
+            END
+            """
+        )
 
     def _has_table(self, name: str) -> bool:
         row = self.conn.execute(
@@ -133,16 +314,30 @@ class DatabaseService:
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_name_unique ON customers(LOWER(name))"
         )
         self.conn.execute(
+            """CREATE TABLE IF NOT EXISTS usdot_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usdot_number TEXT NOT NULL UNIQUE CHECK (LENGTH(TRIM(usdot_number)) > 0),
+                customer_id INTEGER,
+                legal_name TEXT,
+                phone TEXT,
+                notes TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
+            )"""
+        )
+        self.conn.execute(
             """CREATE TABLE IF NOT EXISTS trucks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 customer_id INTEGER,
+                usdot_account_id INTEGER,
                 plate TEXT NOT NULL UNIQUE CHECK (LENGTH(TRIM(plate)) > 0),
                 state TEXT,
                 make TEXT,
                 model TEXT,
                 notes TEXT,
                 created_at TEXT NOT NULL,
-                FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
+                FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+                FOREIGN KEY (usdot_account_id) REFERENCES usdot_accounts(id) ON DELETE SET NULL
             )"""
         )
         self.conn.execute(
@@ -150,6 +345,7 @@ class DatabaseService:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 customer_id INTEGER NOT NULL,
                 truck_id INTEGER,
+                usdot_account_id INTEGER,
                 monthly_rate REAL NOT NULL CHECK (monthly_rate > 0),
                 start_ym TEXT NOT NULL CHECK (LENGTH(TRIM(start_ym)) > 0),
                 end_ym TEXT,
@@ -159,7 +355,8 @@ class DatabaseService:
                 notes TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
-                FOREIGN KEY (truck_id) REFERENCES trucks(id) ON DELETE SET NULL
+                FOREIGN KEY (truck_id) REFERENCES trucks(id) ON DELETE SET NULL,
+                FOREIGN KEY (usdot_account_id) REFERENCES usdot_accounts(id) ON DELETE SET NULL
             )"""
         )
         self.conn.execute(
@@ -189,6 +386,10 @@ class DatabaseService:
         )
 
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_trucks_plate ON trucks(plate)")
+        self.conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_usdot_number_unique ON usdot_accounts(usdot_number)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_usdot_accounts_customer_id ON usdot_accounts(customer_id)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_trucks_usdot_account_id ON trucks(usdot_account_id)")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_usdot_account_id ON contracts(usdot_account_id)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_ym ON invoices(invoice_ym)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id)")
 
@@ -449,7 +650,7 @@ class DatabaseService:
                 f"(source={source_tables}, backup={backup_tables})"
             )
 
-        core_tables = ["customers", "trucks", "contracts", "invoices", "payments"]
+        core_tables = ["customers", "usdot_accounts", "trucks", "contracts", "invoices", "payments"]
         missing_core = [t for t in core_tables if t not in backup_tables]
         if missing_core:
             raise RuntimeError(
@@ -476,7 +677,7 @@ class DatabaseService:
         if fk_rows:
             raise RuntimeError(f"Foreign key check failed with {len(fk_rows)} violation(s)")
 
-        core_tables = ["customers", "trucks", "contracts", "invoices", "payments"]
+        core_tables = ["customers", "usdot_accounts", "trucks", "contracts", "invoices", "payments"]
         table_names = self._user_table_names(conn)
         missing_core = [t for t in core_tables if t not in table_names]
         if missing_core:
@@ -611,9 +812,10 @@ class DatabaseService:
     ) -> list[sqlite3.Row]:
         base_query = (
             """
-            SELECT t.id, t.plate, t.state, t.make, t.model, c.name AS customer_name
+            SELECT t.id, COALESCE(ua.usdot_number, t.plate) AS plate, t.state, t.make, t.model, c.name AS customer_name
             FROM trucks t
             LEFT JOIN customers c ON c.id=t.customer_id
+            LEFT JOIN usdot_accounts ua ON ua.id=t.usdot_account_id
             """
         )
         where_clauses: list[str] = []
@@ -629,10 +831,10 @@ class DatabaseService:
                 where_clauses.append("COALESCE(c.name, '') LIKE ? COLLATE NOCASE")
                 params.append(f"%{query_text}%")
             elif search_mode == "plate":
-                where_clauses.append("COALESCE(t.plate, '') LIKE ? COLLATE NOCASE")
+                where_clauses.append("COALESCE(ua.usdot_number, t.plate, '') LIKE ? COLLATE NOCASE")
                 params.append(f"%{query_text}%")
             else:
-                where_clauses.append("(COALESCE(t.plate, '') LIKE ? COLLATE NOCASE OR COALESCE(c.name, '') LIKE ? COLLATE NOCASE)")
+                where_clauses.append("(COALESCE(ua.usdot_number, t.plate, '') LIKE ? COLLATE NOCASE OR COALESCE(c.name, '') LIKE ? COLLATE NOCASE)")
                 params.append(f"%{query_text}%")
                 params.append(f"%{query_text}%")
 
@@ -659,10 +861,11 @@ class DatabaseService:
                 END AS end_date,
                 ct.is_active,
                 c.name AS customer_name,
-                t.plate AS plate
+                COALESCE(ua.usdot_number, t.plate) AS plate
             FROM contracts ct
             JOIN customers c ON c.id=ct.customer_id
             LEFT JOIN trucks t ON t.id=ct.truck_id
+            LEFT JOIN usdot_accounts ua ON ua.id=COALESCE(ct.usdot_account_id, t.usdot_account_id)
             ORDER BY ct.id DESC
         """
         if limit > 0:
@@ -676,7 +879,14 @@ class DatabaseService:
 
     @trace
     def get_truck_dropdown_rows(self) -> list[sqlite3.Row]:
-        return self.fetchall("SELECT id, plate, state, customer_id FROM trucks ORDER BY plate ASC")
+        return self.fetchall(
+            """
+            SELECT t.id, COALESCE(ua.usdot_number, t.plate) AS plate, t.state, t.customer_id, t.usdot_account_id
+            FROM trucks t
+            LEFT JOIN usdot_accounts ua ON ua.id=t.usdot_account_id
+            ORDER BY plate ASC
+            """
+        )
 
     @trace
     def get_active_contracts_for_dashboard(self) -> list[sqlite3.Row]:
@@ -731,10 +941,11 @@ class DatabaseService:
                     ELSE NULL
                 END AS end_date,
                 c.name AS customer_name,
-                t.plate AS plate
+                COALESCE(ua.usdot_number, t.plate) AS plate
             FROM contracts ct
             JOIN customers c ON c.id=ct.customer_id
             LEFT JOIN trucks t ON t.id=ct.truck_id
+            LEFT JOIN usdot_accounts ua ON ua.id=COALESCE(ct.usdot_account_id, t.usdot_account_id)
             WHERE ct.is_active=1
             ORDER BY customer_name ASC, plate ASC
             """
@@ -756,10 +967,11 @@ class DatabaseService:
                 END AS end_date,
                 ct.is_active,
                 c.name AS customer_name,
-                t.plate AS plate
+                COALESCE(ua.usdot_number, t.plate) AS plate
             FROM contracts ct
             JOIN customers c ON c.id=ct.customer_id
             LEFT JOIN trucks t ON t.id=ct.truck_id
+            LEFT JOIN usdot_accounts ua ON ua.id=COALESCE(ct.usdot_account_id, t.usdot_account_id)
             ORDER BY customer_name ASC, plate ASC, ct.id ASC
             """
         )
@@ -804,9 +1016,10 @@ class DatabaseService:
     def get_active_contracts_for_customer_invoice(self, customer_id: int) -> list[sqlite3.Row]:
         return self.fetchall(
             """
-            SELECT ct.id, ct.monthly_rate, ct.start_date, ct.end_date, t.plate
+            SELECT ct.id, ct.monthly_rate, ct.start_date, ct.end_date, COALESCE(ua.usdot_number, t.plate) AS plate
             FROM contracts ct
             LEFT JOIN trucks t ON t.id = ct.truck_id
+            LEFT JOIN usdot_accounts ua ON ua.id = COALESCE(ct.usdot_account_id, t.usdot_account_id)
             WHERE ct.customer_id = ? AND ct.is_active = 1
             ORDER BY ct.id ASC
             """,
@@ -930,11 +1143,12 @@ class DatabaseService:
                 i.invoice_date,
                 i.amount,
                 c.name AS customer_name,
-                t.plate AS plate
+                COALESCE(ua.usdot_number, t.plate) AS plate
             FROM invoices i
             JOIN contracts ct ON ct.id=i.contract_id
             JOIN customers c ON c.id=ct.customer_id
             LEFT JOIN trucks t ON t.id=ct.truck_id
+            LEFT JOIN usdot_accounts ua ON ua.id=COALESCE(ct.usdot_account_id, t.usdot_account_id)
             WHERE i.invoice_date <= ?
             ORDER BY i.invoice_date ASC, customer_name ASC
             """,
@@ -1024,12 +1238,13 @@ class DatabaseService:
                     c.phone,
                     c.company,
                     t.id AS truck_id,
-                    t.plate,
+                    COALESCE(ua.usdot_number, t.plate) AS plate,
                     t.state,
                     t.make,
                     t.model
                 FROM customers c
                 LEFT JOIN trucks t ON t.customer_id = c.id
+                LEFT JOIN usdot_accounts ua ON ua.id=t.usdot_account_id
                 WHERE c.name LIKE ? COLLATE NOCASE
                    OR c.phone LIKE ?
                    OR c.company LIKE ? COLLATE NOCASE
@@ -1053,12 +1268,13 @@ class DatabaseService:
                 c.phone,
                 c.company,
                 t.id AS truck_id,
-                t.plate,
+                COALESCE(ua.usdot_number, t.plate) AS plate,
                 t.state,
                 t.make,
                 t.model
             FROM customers c
             LEFT JOIN trucks t ON t.customer_id = c.id
+            LEFT JOIN usdot_accounts ua ON ua.id=t.usdot_account_id
             ORDER BY c.name ASC, t.plate ASC
             """
         )
@@ -1070,8 +1286,216 @@ class DatabaseService:
 
     @trace
     def get_all_truck_plates(self) -> list[str]:
-        rows = self.fetchall("SELECT plate FROM trucks")
+        rows = self.fetchall(
+            """
+            SELECT COALESCE(ua.usdot_number, t.plate) AS plate
+            FROM trucks t
+            LEFT JOIN usdot_accounts ua ON ua.id=t.usdot_account_id
+            """
+        )
         return [str(r["plate"]) for r in rows if r["plate"] is not None]
+
+    @trace
+    def get_usdot_dropdown_rows(self, customer_id: int | None = None) -> list[sqlite3.Row]:
+        if customer_id is not None:
+            return self.fetchall(
+                """
+                SELECT DISTINCT ua.id, ua.usdot_number
+                FROM usdot_accounts ua
+                LEFT JOIN trucks t ON t.usdot_account_id = ua.id
+                LEFT JOIN contracts ct ON ct.usdot_account_id = ua.id
+                WHERE ua.customer_id = ? OR t.customer_id = ? OR ct.customer_id = ?
+                ORDER BY ua.usdot_number ASC
+                """,
+                (customer_id, customer_id, customer_id),
+            )
+
+        return self.fetchall(
+            """
+            SELECT id, usdot_number
+            FROM usdot_accounts
+            ORDER BY usdot_number ASC
+            """
+        )
+
+    @trace
+    def get_usdot_accounts_with_usage(self, q: str | None = None, limit: int = 300) -> list[sqlite3.Row]:
+        query = (
+            """
+            SELECT
+                ua.id,
+                ua.usdot_number,
+                c.name AS driver_name,
+                ua.legal_name,
+                ua.phone,
+                ua.notes,
+                COUNT(DISTINCT t.id) AS truck_count,
+                COUNT(DISTINCT ct.id) AS contract_count
+            FROM usdot_accounts ua
+            LEFT JOIN customers c ON c.id = ua.customer_id
+            LEFT JOIN trucks t ON t.usdot_account_id = ua.id
+            LEFT JOIN contracts ct ON ct.usdot_account_id = ua.id
+            """
+        )
+        params: list[Any] = []
+        where_clauses: list[str] = []
+
+        search_text = (q or "").strip()
+        if search_text:
+            where_clauses.append(
+                "(" \
+                "COALESCE(ua.usdot_number, '') LIKE ? COLLATE NOCASE OR " \
+                "COALESCE(c.name, '') LIKE ? COLLATE NOCASE OR " \
+                "COALESCE(ua.legal_name, '') LIKE ? COLLATE NOCASE OR " \
+                "COALESCE(ua.phone, '') LIKE ? COLLATE NOCASE OR " \
+                "COALESCE(ua.notes, '') LIKE ? COLLATE NOCASE" \
+                ")"
+            )
+            like = f"%{search_text}%"
+            params.extend([like, like, like, like, like])
+
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+
+        query += """
+            GROUP BY ua.id, ua.usdot_number, c.name, ua.legal_name, ua.phone, ua.notes
+            ORDER BY ua.usdot_number ASC
+        """
+
+        if limit > 0:
+            query += " LIMIT ?"
+            params.append(int(limit))
+
+        return self.fetchall(query, tuple(params))
+
+    @trace
+    def get_contracts_linked_to_usdot_accounts(self) -> list[sqlite3.Row]:
+        """Return all contracts that are linked (directly or via truck) to a USDOT account."""
+        return self.fetchall(
+            """
+            SELECT
+                COALESCE(ct.usdot_account_id, t.usdot_account_id) AS usdot_account_id,
+                ct.id AS contract_id,
+                ct.monthly_rate,
+                COALESCE(NULLIF(ct.start_date, ''), ct.start_ym || '-01') AS start_date,
+                CASE
+                    WHEN ct.end_date IS NOT NULL AND TRIM(ct.end_date) <> '' THEN ct.end_date
+                    WHEN ct.end_ym IS NOT NULL AND TRIM(ct.end_ym) <> '' THEN ct.end_ym || '-01'
+                    ELSE NULL
+                END AS end_date
+            FROM contracts ct
+            LEFT JOIN trucks t ON t.id = ct.truck_id
+            WHERE COALESCE(ct.usdot_account_id, t.usdot_account_id) IS NOT NULL
+            """
+        )
+
+    @trace
+    def get_contracts_by_customer_for_dropdown(self, customer_id: int) -> list[sqlite3.Row]:
+        """Return contracts belonging to a customer, formatted for a dropdown."""
+        return self.fetchall(
+            """
+            SELECT
+                ct.id AS contract_id,
+                ct.monthly_rate,
+                COALESCE(ua.usdot_number, t.plate, 'contract') AS scope
+            FROM contracts ct
+            LEFT JOIN trucks t ON t.id = ct.truck_id
+            LEFT JOIN usdot_accounts ua ON ua.id = COALESCE(ct.usdot_account_id, t.usdot_account_id)
+            WHERE ct.customer_id = ?
+            ORDER BY ct.id DESC
+            """,
+            (customer_id,),
+        )
+
+    @trace
+    def get_usdot_account_basic_by_id(self, usdot_account_id: int) -> sqlite3.Row | None:
+        return self.fetchone(
+            """
+            SELECT id, usdot_number, customer_id, legal_name, phone, notes
+            FROM usdot_accounts
+            WHERE id=?
+            """,
+            (usdot_account_id,),
+        )
+
+    def get_or_create_usdot_account(
+        self,
+        usdot_number: str,
+        created_at: str,
+        customer_id: int | None = None,
+        legal_name: str | None = None,
+        phone: str | None = None,
+        notes: str | None = None,
+    ) -> int:
+        normalized = str(usdot_number or "").strip().upper()
+        if not normalized:
+            raise ValueError("USDOT number is required")
+
+        row = self.fetchone("SELECT id, customer_id FROM usdot_accounts WHERE usdot_number=?", (normalized,))
+        if row:
+            if customer_id is not None and row["customer_id"] is None:
+                self.execute("UPDATE usdot_accounts SET customer_id=? WHERE id=?", (customer_id, row["id"]))
+            return int(row["id"])
+
+        cur = self.execute(
+            """
+            INSERT INTO usdot_accounts(usdot_number, customer_id, legal_name, phone, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (normalized, customer_id, legal_name, phone, notes, created_at),
+        )
+        return int(cur.lastrowid)
+
+    @trace
+    def create_usdot_account(
+        self,
+        usdot_number: str,
+        customer_id: int | None,
+        legal_name: str | None,
+        phone: str | None,
+        notes: str | None,
+        created_at: str,
+    ) -> int:
+        normalized = str(usdot_number or "").strip().upper()
+        if not normalized:
+            raise ValueError("USDOT number is required")
+        cur = self.execute(
+            """
+            INSERT INTO usdot_accounts(usdot_number, customer_id, legal_name, phone, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (normalized, customer_id, legal_name, phone, notes, created_at),
+        )
+        return int(cur.lastrowid)
+
+    @trace
+    def update_usdot_account(
+        self,
+        usdot_account_id: int,
+        usdot_number: str,
+        customer_id: int | None,
+        legal_name: str | None,
+        phone: str | None,
+        notes: str | None,
+    ) -> None:
+        normalized = str(usdot_number or "").strip().upper()
+        if not normalized:
+            raise ValueError("USDOT number is required")
+        self.execute(
+            """
+            UPDATE usdot_accounts
+            SET usdot_number=?, customer_id=?, legal_name=?, phone=?, notes=?
+            WHERE id=?
+            """,
+            (normalized, customer_id, legal_name, phone, notes, usdot_account_id),
+        )
+
+    @trace
+    def set_contract_usdot_account(self, contract_id: int, usdot_account_id: int) -> None:
+        self.execute(
+            "UPDATE contracts SET usdot_account_id=? WHERE id=?",
+            (usdot_account_id, contract_id),
+        )
 
     @trace
     def get_all_customer_id_name_rows(self) -> list[sqlite3.Row]:
@@ -1105,10 +1529,14 @@ class DatabaseService:
         model: str | None,
         notes: str | None,
         created_at: str,
+        usdot_account_id: int | None = None,
     ) -> int:
         cur = self.execute(
-            "INSERT INTO trucks(customer_id, plate, state, make, model, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (customer_id, plate, state, make, model, notes, created_at),
+            """
+            INSERT INTO trucks(customer_id, usdot_account_id, plate, state, make, model, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (customer_id, usdot_account_id, plate, state, make, model, notes, created_at),
         )
         return int(cur.lastrowid)
 
@@ -1129,13 +1557,23 @@ class DatabaseService:
         is_active: int,
         notes: str | None,
         created_at: str,
+        usdot_account_id: int | None = None,
     ) -> int:
+        resolved_usdot_account_id = usdot_account_id
+        if resolved_usdot_account_id is None and truck_id is not None:
+            truck_row = self.fetchone("SELECT usdot_account_id FROM trucks WHERE id=?", (truck_id,))
+            if truck_row and truck_row["usdot_account_id"] is not None:
+                resolved_usdot_account_id = int(truck_row["usdot_account_id"])
+
+        if resolved_usdot_account_id is None:
+            resolved_usdot_account_id = self.get_or_create_usdot_account(f"CUST-{customer_id}", created_at, customer_id=customer_id)
+
         cur = self.execute(
             """
-            INSERT INTO contracts(customer_id, truck_id, monthly_rate, start_ym, end_ym, start_date, end_date, is_active, notes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO contracts(customer_id, truck_id, usdot_account_id, monthly_rate, start_ym, end_ym, start_date, end_date, is_active, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (customer_id, truck_id, monthly_rate, start_ym, end_ym, start_date, end_date, is_active, notes, created_at),
+            (customer_id, truck_id, resolved_usdot_account_id, monthly_rate, start_ym, end_ym, start_date, end_date, is_active, notes, created_at),
         )
         return int(cur.lastrowid)
 
@@ -1155,6 +1593,7 @@ class DatabaseService:
                 id,
                 customer_id,
                 truck_id,
+                usdot_account_id,
                 monthly_rate,
                 COALESCE(NULLIF(start_date, ''), start_ym || '-01') AS start_date,
                 CASE
@@ -1188,10 +1627,11 @@ class DatabaseService:
                     WHEN ct.end_ym IS NOT NULL AND TRIM(ct.end_ym) <> '' THEN ct.end_ym || '-01'
                     ELSE NULL
                 END AS end_date,
-                COALESCE(t.plate, '') AS plate
+                COALESCE(ua.usdot_number, t.plate, '') AS plate
             FROM contracts ct
             JOIN customers c ON c.id = ct.customer_id
             LEFT JOIN trucks t ON t.id = ct.truck_id
+            LEFT JOIN usdot_accounts ua ON ua.id = COALESCE(ct.usdot_account_id, t.usdot_account_id)
             WHERE (
                 ct.truck_id = ?
                 OR (
@@ -1225,12 +1665,27 @@ class DatabaseService:
         end_date: str | None,
         is_active: int,
         notes: str | None,
+        usdot_account_id: int | None = None,
     ) -> None:
+        resolved_usdot_account_id = usdot_account_id
+        if resolved_usdot_account_id is None and truck_id is not None:
+            truck_row = self.fetchone("SELECT usdot_account_id FROM trucks WHERE id=?", (truck_id,))
+            if truck_row and truck_row["usdot_account_id"] is not None:
+                resolved_usdot_account_id = int(truck_row["usdot_account_id"])
+
+        if resolved_usdot_account_id is None:
+            existing = self.fetchone("SELECT created_at FROM contracts WHERE id=?", (contract_id,))
+            created_at = str(existing["created_at"]).strip() if existing and existing["created_at"] is not None else ""
+            if not created_at:
+                created_at = "1970-01-01T00:00:00"
+            resolved_usdot_account_id = self.get_or_create_usdot_account(f"CUST-{customer_id}", created_at, customer_id=customer_id)
+
         self.execute(
             """
             UPDATE contracts
             SET customer_id=?,
                 truck_id=?,
+                usdot_account_id=?,
                 monthly_rate=?,
                 start_ym=?,
                 end_ym=?,
@@ -1240,7 +1695,7 @@ class DatabaseService:
                 notes=?
             WHERE id=?
             """,
-            (customer_id, truck_id, monthly_rate, start_ym, end_ym, start_date, end_date, is_active, notes, contract_id),
+            (customer_id, truck_id, resolved_usdot_account_id, monthly_rate, start_ym, end_ym, start_date, end_date, is_active, notes, contract_id),
         )
 
     @trace

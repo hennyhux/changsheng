@@ -14,10 +14,10 @@ def open_contract_edit_dialog(
     contract_id: int,
     row: dict,
     customer_values: Iterable[str],
-    truck_values: Iterable[str],
+    usdot_values: Iterable[str],
     date_input_factory: Callable[..., ttk.Entry],
     make_searchable_combo: Callable[[ttk.Combobox], None],
-    on_save: Callable[[ttk.Combobox, ttk.Combobox, str, str, str, str, str, bool], bool],
+    on_save: Callable[[ttk.Combobox, ttk.Combobox, str, str, str, str, bool], bool],
     optional_date_clear_on_blur_cb: Callable[[tk.Widget], None] = None,
 ) -> None:
     def row_get(key: str, default=None):
@@ -46,17 +46,10 @@ def open_contract_edit_dialog(
     customer_combo.grid(row=0, column=1, sticky="ew", padx=6, pady=6)
     make_searchable_combo(customer_combo)
 
-    ttk.Label(frm, text="Contract scope").grid(row=0, column=2, sticky="w", padx=6, pady=6)
-    scope_var = tk.StringVar(value=("per_truck" if row_get("truck_id") else "customer_level"))
-    scope_frame = ttk.Frame(frm)
-    scope_frame.grid(row=0, column=3, sticky="w", padx=6, pady=6)
-    ttk.Radiobutton(scope_frame, text="Per truck", variable=scope_var, value="per_truck").pack(side="left", padx=(0, 8))
-    ttk.Radiobutton(scope_frame, text="Customer-level", variable=scope_var, value="customer_level").pack(side="left")
-
-    ttk.Label(frm, text="Truck (if per truck)").grid(row=1, column=0, sticky="w", padx=6, pady=6)
-    truck_combo = ttk.Combobox(frm, width=30)
-    truck_combo.grid(row=1, column=1, sticky="ew", padx=6, pady=6)
-    make_searchable_combo(truck_combo)
+    ttk.Label(frm, text="USDOT*").grid(row=0, column=2, sticky="w", padx=6, pady=6)
+    usdot_combo = ttk.Combobox(frm, width=30)
+    usdot_combo.grid(row=0, column=3, sticky="ew", padx=6, pady=6)
+    make_searchable_combo(usdot_combo)
 
     ttk.Label(frm, text="Rate ($/mo)*").grid(row=1, column=2, sticky="w", padx=6, pady=6)
     rate_entry = ttk.Entry(frm, width=12)
@@ -93,11 +86,11 @@ def open_contract_edit_dialog(
     ttk.Checkbutton(frm, text="Active", variable=is_active_var).grid(row=5, column=0, sticky="w", padx=6, pady=(4, 10))
 
     customer_values = list(customer_values)
-    truck_values = list(truck_values)
+    usdot_values = list(usdot_values)
     customer_combo["values"] = customer_values
     customer_combo._search_all_values = list(customer_values)
-    truck_combo["values"] = truck_values
-    truck_combo._search_all_values = list(truck_values)
+    usdot_combo["values"] = usdot_values
+    usdot_combo._search_all_values = list(usdot_values)
 
     customer_id_value = row_get("customer_id")
     if customer_id_value is not None:
@@ -106,31 +99,21 @@ def open_contract_edit_dialog(
                 customer_combo.current(i)
                 break
 
-    truck_id_value = row_get("truck_id")
-    if truck_id_value:
-        for i, v in enumerate(truck_values):
-            if v.startswith(f"{int(truck_id_value)}:"):
-                truck_combo.current(i)
+    usdot_id_value = row_get("usdot_account_id")
+    if usdot_id_value:
+        for i, v in enumerate(usdot_values):
+            if v.startswith(f"{int(usdot_id_value)}:"):
+                usdot_combo.current(i)
                 break
 
-    def _sync_scope_state():
-        if scope_var.get() == "customer_level":
-            truck_combo.configure(state="disabled")
-        else:
-            truck_combo.configure(state="normal")
-
-    scope_var.trace_add("write", lambda *_: _sync_scope_state())
-    _sync_scope_state()
-
     def _save_contract():
-        scope = scope_var.get()
         rate_str = rate_entry.get()
         start_str = start_entry.get().strip()
         end_str = end_entry.get().strip()
         notes_str = notes_entry.get()
         is_active = bool(is_active_var.get())
 
-        if on_save(customer_combo, truck_combo, scope, rate_str, start_str, end_str, notes_str, is_active):
+        if on_save(customer_combo, usdot_combo, rate_str, start_str, end_str, notes_str, is_active):
             win.destroy()
 
     action_bar = ttk.Frame(frm)

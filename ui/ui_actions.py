@@ -202,7 +202,7 @@ def export_customers_trucks_csv_action(
         "Phone",
         "Company",
         "Truck ID",
-        "Plate",
+        "USDOT",
         "State",
         "Make",
         "Model",
@@ -315,7 +315,7 @@ def import_customers_trucks_action(
         "name": ["customer name", "name", "customer", "姓名", "客户名"],
         "phone": ["phone", "tel", "telephone", "电话"],
         "company": ["company", "company name", "公司"],
-        "plate": ["plate", "license plate", "plate number", "车牌"],
+        "plate": ["plate", "license plate", "plate number", "usdot", "usdot number", "USDOT", "车牌"],
         "state": ["state", "st", "州"],
         "make": ["make", "brand", "品牌"],
         "model": ["model", "型号"],
@@ -934,14 +934,14 @@ def delete_truck_action(
         return
 
     truck_id = int(values[0])
-    plate = values[1]
+    usdot_number = values[1]
 
     contract_count = db.count_contracts_for_truck(truck_id)
 
     ok = messagebox.askyesno(
         "Confirm Delete",
         (
-            f"Delete truck '{plate}'?\n\n"
+            f"Delete truck '{usdot_number}'?\n\n"
             f"  • Related contracts: {contract_count} (will be deleted)\n"
             f"    (Related invoices and payments will also be deleted.)\n\n"
             f"This action cannot be undone."
@@ -952,7 +952,7 @@ def delete_truck_action(
 
     final_confirm = messagebox.askyesno(
         "⚠️ Final Confirmation",
-        f"Are you ABSOLUTELY SURE you want to delete truck '{plate}'?\n\n"
+        f"Are you ABSOLUTELY SURE you want to delete truck '{usdot_number}'?\n\n"
         f"This will permanently delete {contract_count} contracts and related billing history.\n\n"
         f"THIS CANNOT BE UNDONE.",
         icon="warning",
@@ -963,10 +963,10 @@ def delete_truck_action(
 
     db.delete_truck(truck_id)
     db.commit()
-    log_action_cb("DELETE_TRUCK", f"Truck ID: {truck_id}, Plate: {plate}, Related Contracts: {contract_count}")
+    log_action_cb("DELETE_TRUCK", f"Truck ID: {truck_id}, USDOT: {usdot_number}, Related Contracts: {contract_count}")
 
     app._refresh_affected_tabs_after_truck_change()
-    messagebox.showinfo("✓ Deleted", f"Truck '{plate}' has been deleted.")
+    messagebox.showinfo("✓ Deleted", f"Truck '{usdot_number}' has been deleted.")
 
 
 @safe_ui_action("Toggle Contract Status")
@@ -1052,7 +1052,7 @@ def record_payment_for_selected_truck_action(
 
     contract_row = db.get_preferred_contract_for_truck(truck_id)
     if not contract_row:
-        messagebox.showinfo("No Contract", "No contract was found for this truck.")
+        messagebox.showinfo("No Contract", "No matching customer contract was found for this truck/USDOT.")
         return
 
     contract_id = int(contract_row["contract_id"])
@@ -1068,7 +1068,6 @@ def edit_contract_action(
     app: Any,
     db: "DatabaseService",
     get_selected_customer_id_cb: Callable[[Any], int | None],
-    get_selected_truck_id_cb: Callable[[Any], int | None],
     show_invalid_cb: Callable[[str], None],
     log_action_cb: Callable[[str, str], None],
 ) -> None:
@@ -1089,22 +1088,20 @@ def edit_contract_action(
         return
 
     app._reload_customer_dropdowns()
-    app._reload_truck_dropdowns()
+    app._reload_usdot_dropdowns(int(row["customer_id"]))
     customer_values = list(app.contract_customer_combo["values"]) if hasattr(app, "contract_customer_combo") else []
-    truck_values = list(app.contract_truck_combo["values"]) if hasattr(app, "contract_truck_combo") else []
+    usdot_values = list(app.contract_usdot_combo["values"]) if hasattr(app, "contract_usdot_combo") else []
 
-    def _save_contract(customer_combo, truck_combo, scope, rate_str, start_str, end_str, notes_str, is_active):
+    def _save_contract(customer_combo, usdot_combo, rate_str, start_str, end_str, notes_str, is_active):
         customer_id = get_selected_customer_id_cb(customer_combo)
         if not customer_id:
             messagebox.showerror("Missing field", "Customer is required.")
             return False
 
-        truck_id = None
-        if scope == "per_truck":
-            truck_id = get_selected_truck_id_cb(truck_combo)
-            if not truck_id:
-                messagebox.showerror("Missing field", "Pick a truck (or switch to customer-level contract).")
-                return False
+        resolved_usdot_account_id = app._get_selected_usdot_account_id_from_combo(usdot_combo)
+        if not resolved_usdot_account_id:
+            messagebox.showerror("Missing field", "USDOT is required.")
+            return False
 
         try:
             rate = positive_float("Rate", rate_str)
@@ -1136,7 +1133,7 @@ def edit_contract_action(
         db.update_contract(
             contract_id,
             customer_id,
-            truck_id,
+            None,
             rate,
             start_ym_val,
             end_ym_val,
@@ -1144,13 +1141,14 @@ def edit_contract_action(
             parsed_end.isoformat() if parsed_end else None,
             1 if is_active else 0,
             notes,
+            usdot_account_id=resolved_usdot_account_id,
         )
         db.commit()
         log_action_cb(
             "EDIT_CONTRACT",
             (
-                f"Contract ID: {contract_id}, Customer ID: {customer_id}, Truck ID: {truck_id}, "
-                f"Scope: {scope}, Rate: ${rate:.2f}, Start: {parsed_start.isoformat()}, "
+                f"Contract ID: {contract_id}, Customer ID: {customer_id}, USDOT Account ID: {resolved_usdot_account_id}, "
+                f"Rate: ${rate:.2f}, Start: {parsed_start.isoformat()}, "
                 f"End: {parsed_end.isoformat() if parsed_end else 'None'}, "
                 f"Active: {1 if is_active else 0}, Notes: {notes or ''}"
             ),
@@ -1171,7 +1169,7 @@ def edit_contract_action(
         contract_id=contract_id,
         row=row,
         customer_values=customer_values,
-        truck_values=truck_values,
+        usdot_values=usdot_values,
         date_input_factory=lambda parent, width, default_iso=None: create_date_input(
             parent,
             width,
@@ -1255,12 +1253,12 @@ def create_contract_action(
     app: Any,
     db: "DatabaseService",
     get_selected_customer_id_cb: Callable[[Any], int | None],
-    get_selected_truck_id_cb: Callable[[Any], int | None],
     get_entry_value_cb: Callable[[Any], str],
     clear_inline_errors_cb: Callable[[Any], None],
     show_inline_error_cb: Callable[[Any, str, int, int], Any],
     show_invalid_cb: Callable[[str], None],
     log_action_cb: Callable[[str, str], None],
+    get_selected_usdot_account_id_cb: Callable[[Any], int | None] | None = None,
 ) -> None:
     if hasattr(app, "_contract_form"):
         clear_inline_errors_cb(app._contract_form)
@@ -1272,15 +1270,15 @@ def create_contract_action(
             show_inline_error_cb(app._contract_form, "Customer is required", row=3, column=0, columnspan=4)
         return
 
-    scope = app.contract_scope.get()
-    truck_id = None
-    if scope == "per_truck":
-        truck_id = get_selected_truck_id_cb(app.contract_truck_combo)
-        if not truck_id:
-            messagebox.showerror("Missing field", "Pick a truck (or switch to customer-level contract).")
-            if hasattr(app, "_contract_form"):
-                show_inline_error_cb(app._contract_form, "Truck is required for per-truck contracts", row=3, column=0, columnspan=4)
-            return
+    usdot_account_id = None
+    requires_usdot_selection = get_selected_usdot_account_id_cb is not None and hasattr(app, "contract_usdot_combo")
+    if requires_usdot_selection:
+        usdot_account_id = get_selected_usdot_account_id_cb(app.contract_usdot_combo)
+    if requires_usdot_selection and not usdot_account_id:
+        messagebox.showerror("Missing field", "USDOT is required.")
+        if hasattr(app, "_contract_form"):
+            show_inline_error_cb(app._contract_form, "USDOT is required", row=3, column=0, columnspan=4)
+        return
 
     try:
         rate = positive_float("Rate", get_entry_value_cb(app.contract_rate))
@@ -1318,7 +1316,7 @@ def create_contract_action(
     end_ym_val = parsed_end.strftime("%Y-%m") if parsed_end else None
     db.create_contract(
         customer_id,
-        truck_id,
+        None,
         rate,
         start_ym_val,
         end_ym_val,
@@ -1327,6 +1325,7 @@ def create_contract_action(
         1,
         notes,
         now_iso(),
+        usdot_account_id=usdot_account_id,
     )
     db.commit()
     log_ux_action(
@@ -1336,7 +1335,7 @@ def create_contract_action(
     log_action_cb(
         "CREATE_CONTRACT",
         (
-            f"Customer ID: {customer_id}, Truck ID: {truck_id}, Scope: {scope}, Rate: ${rate:.2f}, "
+            f"Customer ID: {customer_id}, Truck ID: None, USDOT Account ID: {usdot_account_id}, Scope: USDOT-only, Rate: ${rate:.2f}, "
             f"Start: {parsed_start.isoformat()}, End: {parsed_end.isoformat() if parsed_end else 'None'}, "
             f"Notes: {notes or ''}"
         ),
@@ -1355,6 +1354,190 @@ def create_contract_action(
     app.refresh_statement()
     app.refresh_dashboard()
     messagebox.showinfo("✓ Saved", f"Contract created for ${rate:.2f}/month starting {parsed_start}.")
+
+
+@safe_ui_action("Add USDOT")
+def add_usdot_action(
+    app: Any,
+    db: "DatabaseService",
+    get_entry_value_cb: Callable[[Any], str],
+    get_selected_customer_id_cb: Callable[[Any], int | None],
+    clear_inline_errors_cb: Callable[[Any], None],
+    show_inline_error_cb: Callable[[Any, str, int, int], Any],
+    show_invalid_cb: Callable[[str], None],
+    add_placeholder_cb: Callable[[Any, str], None],
+    log_action_cb: Callable[[str, str], None],
+) -> None:
+    if hasattr(app, "_usdot_form"):
+        clear_inline_errors_cb(app._usdot_form)
+
+    try:
+        usdot_number = required_plate(get_entry_value_cb(app.usdot_number_entry))
+        customer_id = get_selected_customer_id_cb(app.usdot_driver_combo) if hasattr(app, "usdot_driver_combo") else None
+        if not customer_id:
+            raise ValueError("Driver is required.")
+        legal_name = optional_text("Legal Name", get_entry_value_cb(app.usdot_legal_name_entry), max_len=120)
+        phone = optional_phone(get_entry_value_cb(app.usdot_phone_entry))
+        notes = optional_text("Notes", get_entry_value_cb(app.usdot_notes_entry), max_len=300)
+        if hasattr(app, "usdot_contract_combo"):
+            raw = app.usdot_contract_combo.get().strip()
+            try:
+                contract_id = int(raw.split(":")[0]) if raw else None
+            except (ValueError, IndexError):
+                contract_id = None
+        elif hasattr(app, "usdot_contract_id_entry"):
+            contract_id_text = get_entry_value_cb(app.usdot_contract_id_entry)
+            contract_id = positive_int("Contract ID", contract_id_text) if contract_id_text else None
+        else:
+            contract_id = None
+    except ValueError as exc:
+        show_invalid_cb(str(exc))
+        if hasattr(app, "_usdot_form"):
+            show_inline_error_cb(app._usdot_form, str(exc), row=2, column=0, columnspan=6)
+        app.usdot_number_entry.focus()
+        return
+
+    if contract_id is not None and not db.contract_exists(contract_id):
+        messagebox.showerror("Invalid input", f"Contract ID {contract_id} was not found.")
+        if hasattr(app, "_usdot_form"):
+            show_inline_error_cb(app._usdot_form, f"Contract ID {contract_id} was not found", row=3, column=0, columnspan=4)
+        return
+
+    if contract_id is not None:
+        contract_customer_id = db.get_customer_id_by_contract(contract_id)
+        if contract_customer_id is not None and contract_customer_id != customer_id:
+            messagebox.showerror("Invalid input", "Selected driver does not match the linked contract.")
+            if hasattr(app, "_usdot_form"):
+                show_inline_error_cb(app._usdot_form, "Selected driver does not match the linked contract.", row=3, column=0, columnspan=6)
+            return
+
+    try:
+        usdot_account_id = db.create_usdot_account(usdot_number, customer_id, legal_name, phone, notes, now_iso())
+        if contract_id is not None:
+            db.set_contract_usdot_account(contract_id, usdot_account_id)
+    except sqlite3.IntegrityError:
+        db.conn.rollback()
+        messagebox.showerror("Error", f"USDOT '{usdot_number}' already exists.")
+        return
+    except Exception as exc:
+        db.conn.rollback()
+        messagebox.showerror("Error", f"Could not link USDOT to contract: {exc}")
+        return
+
+    db.commit()
+    log_ux_action("Add USDOT", f"ID={usdot_account_id} usdot='{usdot_number}'")
+    log_action_cb(
+        "ADD_USDOT",
+        (
+            f"USDOT Account ID: {usdot_account_id}, USDOT: {usdot_number}, "
+            f"Driver ID: {customer_id}, "
+            f"Legal Name: {legal_name or ''}, Phone: {phone or ''}, Notes: {notes or ''}, "
+            f"Contract ID: {contract_id if contract_id is not None else 'None'}"
+        ),
+    )
+
+    app.usdot_number_entry.delete(0, tk.END)
+    if hasattr(app, "usdot_driver_combo"):
+        app.usdot_driver_combo.set("")
+    app.usdot_legal_name_entry.delete(0, tk.END)
+    app.usdot_phone_entry.delete(0, tk.END)
+    app.usdot_notes_entry.delete(0, tk.END)
+    if hasattr(app, "usdot_contract_combo"):
+        app.usdot_contract_combo["values"] = []
+        app.usdot_contract_combo.set("")
+    elif hasattr(app, "usdot_contract_id_entry"):
+        app.usdot_contract_id_entry.delete(0, tk.END)
+    add_placeholder_cb(app.usdot_number_entry, "USDOT number...")
+    add_placeholder_cb(app.usdot_legal_name_entry, "Legal entity name...")
+    add_placeholder_cb(app.usdot_phone_entry, "Phone number...")
+    add_placeholder_cb(app.usdot_notes_entry, "Additional notes...")
+    if hasattr(app, "usdot_contract_id_entry"):
+        add_placeholder_cb(app.usdot_contract_id_entry, "Contract ID...")
+    app.usdot_number_entry.focus()
+
+    app.refresh_usdots()
+    app.refresh_trucks()
+    app.refresh_contracts()
+    app.refresh_invoices()
+    app.refresh_overdue()
+    app.refresh_statement()
+    app.refresh_dashboard()
+    if contract_id is not None:
+        messagebox.showinfo("✓ Saved", f"USDOT '{usdot_number}' has been added and linked to contract #{contract_id}.")
+    else:
+        messagebox.showinfo("✓ Saved", f"USDOT '{usdot_number}' has been added.")
+
+
+@safe_ui_action("Edit USDOT")
+def edit_selected_usdot_action(
+    app: Any,
+    db: "DatabaseService",
+    get_entry_value_cb: Callable[[Any], str],
+    get_selected_customer_id_cb: Callable[[Any], int | None],
+    clear_inline_errors_cb: Callable[[Any], None],
+    show_inline_error_cb: Callable[[Any, str, int, int], Any],
+    show_invalid_cb: Callable[[str], None],
+    log_action_cb: Callable[[str, str], None],
+) -> None:
+    if hasattr(app, "_usdot_form"):
+        clear_inline_errors_cb(app._usdot_form)
+
+    sel = app.usdot_tree.selection() if hasattr(app, "usdot_tree") else ()
+    if not sel:
+        messagebox.showwarning("No Selection", "Select a USDOT row first.")
+        return
+
+    values = app.usdot_tree.item(sel[0], "values")
+    if not values:
+        messagebox.showerror("Invalid selection", "Could not read selected USDOT row.")
+        return
+
+    try:
+        usdot_account_id = int(values[0])
+    except (ValueError, TypeError):
+        messagebox.showerror("Invalid selection", "Selected USDOT account ID is invalid.")
+        return
+
+    try:
+        usdot_number = required_plate(get_entry_value_cb(app.usdot_number_entry))
+        customer_id = get_selected_customer_id_cb(app.usdot_driver_combo) if hasattr(app, "usdot_driver_combo") else None
+        if not customer_id:
+            raise ValueError("Driver is required.")
+        legal_name = optional_text("Legal Name", get_entry_value_cb(app.usdot_legal_name_entry), max_len=120)
+        phone = optional_phone(get_entry_value_cb(app.usdot_phone_entry))
+        notes = optional_text("Notes", get_entry_value_cb(app.usdot_notes_entry), max_len=300)
+    except ValueError as exc:
+        show_invalid_cb(str(exc))
+        if hasattr(app, "_usdot_form"):
+            show_inline_error_cb(app._usdot_form, str(exc), row=2, column=0, columnspan=6)
+        app.usdot_number_entry.focus()
+        return
+
+    try:
+        db.update_usdot_account(usdot_account_id, usdot_number, customer_id, legal_name, phone, notes)
+    except sqlite3.IntegrityError:
+        messagebox.showerror("Error", f"USDOT '{usdot_number}' already exists.")
+        return
+
+    db.commit()
+    log_ux_action("Edit USDOT", f"ID={usdot_account_id} usdot='{usdot_number}'")
+    log_action_cb(
+        "EDIT_USDOT",
+        (
+            f"USDOT Account ID: {usdot_account_id}, USDOT: {usdot_number}, "
+            f"Driver ID: {customer_id}, "
+            f"Legal Name: {legal_name or ''}, Phone: {phone or ''}, Notes: {notes or ''}"
+        ),
+    )
+
+    app.refresh_usdots()
+    app.refresh_trucks()
+    app.refresh_contracts()
+    app.refresh_invoices()
+    app.refresh_overdue()
+    app.refresh_statement()
+    app.refresh_dashboard()
+    messagebox.showinfo("✓ Updated", "USDOT account has been updated.")
 
 
 @safe_ui_action("Add Customer")
@@ -1427,6 +1610,9 @@ def add_truck_action(
         clear_inline_errors_cb(app._truck_form)
 
     customer_id = get_selected_customer_id_cb(app.truck_customer_combo)
+    selected_usdot_account_id = None
+    if hasattr(app, "truck_usdot_combo"):
+        selected_usdot_account_id = app._get_selected_usdot_account_id_from_combo(app.truck_usdot_combo)
 
     try:
         plate = required_plate(get_entry_value_cb(app.t_plate))
@@ -1434,33 +1620,6 @@ def add_truck_action(
         make = optional_text("Make", get_entry_value_cb(app.t_make), max_len=40)
         model = optional_text("Model", get_entry_value_cb(app.t_model), max_len=40)
         notes = optional_text("Notes", get_entry_value_cb(app.t_notes), max_len=300)
-        contract_rate = None
-        contract_start = None
-        contract_end = None
-        if customer_id is not None:
-            contract_rate = positive_float("Contract Cost", get_entry_value_cb(app.t_contract_rate))
-            start_raw = get_entry_value_cb(app.t_contract_start).strip()
-            end_raw = get_entry_value_cb(app.t_contract_end).strip()
-
-            if start_raw:
-                parsed_start = parse_ymd(start_raw)
-                if not parsed_start:
-                    raise ValueError("Contract Start date format must be YYYY-MM-DD.")
-                contract_start = parsed_start.isoformat()
-            else:
-                contract_start = today().isoformat()
-
-            if end_raw:
-                parsed_end = parse_ymd(end_raw)
-                if not parsed_end:
-                    raise ValueError("Contract End date format must be YYYY-MM-DD.")
-                contract_end = parsed_end.isoformat()
-
-            if contract_end is not None and contract_start is not None:
-                start_date_obj = parse_ymd(contract_start)
-                end_date_obj = parse_ymd(contract_end)
-                if start_date_obj and end_date_obj and end_date_obj < start_date_obj:
-                    raise ValueError("Contract End date cannot be earlier than Contract Start date.")
     except ValueError as exc:
         show_invalid_cb(str(exc))
         if hasattr(app, "_truck_form"):
@@ -1470,67 +1629,34 @@ def add_truck_action(
 
     try:
         created_at = now_iso()
-        truck_id = db.create_truck(customer_id, plate, state, make, model, notes, created_at)
-
-        contract_id = None
-        if customer_id is not None and contract_rate is not None:
-            start_date = contract_start or today().isoformat()
-            end_date = contract_end
-            contract_id = db.create_contract(
-                customer_id=customer_id,
-                truck_id=truck_id,
-                monthly_rate=contract_rate,
-                start_ym=start_date[:7],
-                end_ym=(end_date[:7] if end_date else None),
-                start_date=start_date,
-                end_date=end_date,
-                is_active=1,
-                notes=None,
-                created_at=created_at,
-            )
+        truck_id = db.create_truck(customer_id, plate, state, make, model, notes, created_at, usdot_account_id=selected_usdot_account_id)
 
         db.commit()
         log_action_cb(
             "ADD_TRUCK",
             (
-                f"Truck ID: {truck_id}, Plate: {plate}, Customer ID: {customer_id}, State: {state or ''}, "
-                f"Make: {make or ''}, Model: {model or ''}, Notes: {notes or ''}"
+                f"Truck ID: {truck_id}, USDOT: {plate}, Customer ID: {customer_id}, State: {state or ''}, "
+                f"Make: {make or ''}, Model: {model or ''}, Notes: {notes or ''}, Linked USDOT Account ID: {selected_usdot_account_id if selected_usdot_account_id is not None else 'None'}"
             ),
         )
-        if contract_id is not None:
-            log_action_cb(
-                "ADD_CONTRACT",
-                (
-                    f"Auto-created Contract ID: {contract_id}, Truck ID: {truck_id}, Customer ID: {customer_id}, "
-                    f"Rate: ${contract_rate:.2f}, Start: {contract_start or ''}, End: {contract_end or 'None'}"
-                ),
-            )
     except sqlite3.IntegrityError:
-        messagebox.showerror("Error", f"Plate '{plate}' already exists or invalid data.")
+        messagebox.showerror("Error", f"USDOT '{plate}' already exists or invalid data.")
         return
 
-    for widget in (app.t_plate, app.t_state, app.t_make, app.t_model, app.t_notes, app.t_contract_rate):
+    for widget in (app.t_plate, app.t_state, app.t_make, app.t_model, app.t_notes):
         widget.delete(0, tk.END)
+    if hasattr(app, "truck_usdot_combo"):
+        app.truck_usdot_combo.set("")
 
-    for widget in (app.t_contract_start, app.t_contract_end):
-        try:
-            widget.delete(0, tk.END)
-        except Exception:
-            pass
-
-    add_placeholder_cb(app.t_plate, "License plate...")
+    add_placeholder_cb(app.t_plate, "USDOT number...")
     add_placeholder_cb(app.t_state, "CA")
     add_placeholder_cb(app.t_make, "Ford")
     add_placeholder_cb(app.t_model, "F-150")
     add_placeholder_cb(app.t_notes, "Additional notes...")
-    add_placeholder_cb(app.t_contract_rate, "Monthly cost...")
     app.t_plate.focus()
 
     app._refresh_affected_tabs_after_truck_change()
-    if customer_id is not None:
-        messagebox.showinfo("✓ Saved", f"Truck '{plate}' has been added and a contract was created.")
-    else:
-        messagebox.showinfo("✓ Saved", f"Truck '{plate}' has been added.")
+    messagebox.showinfo("✓ Saved", f"Truck '{plate}' has been added.")
 
 
 @safe_ui_action("Refresh Contracts")
@@ -1600,6 +1726,65 @@ def refresh_contracts_action(
         app.refresh_overdue()
 
 
+@safe_ui_action("Refresh USDOT")
+def refresh_usdots_action(
+    app: Any,
+    db: "DatabaseService",
+    show_invalid_cb: Callable[[str], None],
+    row_stripe_tag_cb: Callable[[int], str],
+    outstanding_tag_from_amount_cb: Callable[[float], str],
+) -> None:
+    query_text = app.usdot_search.get().strip() if hasattr(app, "usdot_search") else ""
+    if len(query_text) > 80:
+        show_invalid_cb("Search text must be 80 characters or fewer.")
+        return
+
+    existing_items = app.usdot_tree.get_children() if hasattr(app, "usdot_tree") else ()
+    if existing_items:
+        app.usdot_tree.delete(*existing_items)
+
+    # Compute outstanding balance per USDOT account
+    as_of = today()
+    paid_rows = db.get_paid_totals_by_contract_as_of(as_of.isoformat())
+    paid_by_contract = {int(r["contract_id"]): float(r["paid_total"]) for r in paid_rows}
+    usdot_contracts = db.get_contracts_linked_to_usdot_accounts()
+    outstanding_by_usdot: dict[int, float] = {}
+    for cr in usdot_contracts:
+        usdot_id = int(cr["usdot_account_id"])
+        start_date = parse_ymd(str(cr["start_date"]))
+        if not start_date:
+            continue
+        contract_id = int(cr["contract_id"])
+        end_date = parse_ymd(str(cr["end_date"])) if cr["end_date"] else None
+        effective_end = min(end_date, as_of) if end_date else as_of
+        expected = float(cr["monthly_rate"]) * elapsed_months_inclusive(start_date, effective_end)
+        outstanding = expected - paid_by_contract.get(contract_id, 0.0)
+        outstanding_by_usdot[usdot_id] = outstanding_by_usdot.get(usdot_id, 0.0) + outstanding
+
+    rows = db.get_usdot_accounts_with_usage(q=query_text if query_text else None, limit=500)
+    for row_index, row in enumerate(rows):
+        usdot_id = int(row["id"])
+        outstanding = outstanding_by_usdot.get(usdot_id, 0.0)
+        app.usdot_tree.insert(
+            "",
+            "end",
+            values=(
+                usdot_id,
+                row["usdot_number"],
+                row["driver_name"] or "",
+                row["legal_name"] or "",
+                row["phone"] or "",
+                row["notes"] or "",
+                int(row["truck_count"]),
+                int(row["contract_count"]),
+            ),
+            tags=(row_stripe_tag_cb(row_index), outstanding_tag_from_amount_cb(outstanding)),
+        )
+
+    app._reapply_tree_sort(app.usdot_tree)
+    app._reload_usdot_dropdowns()
+
+
 @safe_ui_action("Refresh Customers")
 def refresh_customers_action(
     app: Any,
@@ -1649,7 +1834,6 @@ def refresh_customers_action(
                 row["company"] or "",
                 row["notes"] or "",
                 f"${customer_outstanding:.2f}",
-                int(row["truck_count"]),
             ),
             tags=(row_stripe_tag_cb(row_index), outstanding_tag_from_amount_cb(customer_outstanding)),
         )
@@ -2247,6 +2431,39 @@ def refresh_histories_action(
     except Exception as exc:
         logger.warning(f"Failed to read history log file: {exc}")
         log = "(No log file found)\n"
+
+    if hasattr(app, "histories_statement_type"):
+        statement_types: set[str] = set()
+        for line in log.splitlines():
+            if not line:
+                continue
+            right_bracket = line.find("] ")
+            pipe_pos = line.find(" | ")
+            if right_bracket == -1 or pipe_pos == -1 or pipe_pos <= right_bracket + 2:
+                continue
+            statement = normalize_whitespace(line[right_bracket + 2:pipe_pos])
+            if statement:
+                statement_types.add(statement)
+
+        discovered_values = ["(Any)", *sorted(statement_types)]
+        current_value = normalize_whitespace(app.histories_statement_type.get())
+        app.histories_statement_type.configure(values=discovered_values)
+        if current_value in discovered_values:
+            app.histories_statement_type.set(current_value)
+        else:
+            app.histories_statement_type.set("(Any)")
+
+    statement_filter = ""
+    if hasattr(app, "histories_filter"):
+        statement_filter = normalize_whitespace(app.histories_filter.get())
+
+    if statement_filter:
+        needle = statement_filter.lower()
+        filtered_lines = [line for line in log.splitlines() if needle in line.lower()]
+        log = "\n".join(filtered_lines)
+        if filtered_lines:
+            log += "\n"
+
     app.histories_text.configure(state="normal")
     app.histories_text.delete("1.0", tk.END)
     app.histories_text.insert("1.0", log)
@@ -2608,7 +2825,7 @@ def open_payment_form_window_action(
         try:
             contract_id = int(contract_id_str)
         except (ValueError, TypeError):
-            messagebox.showinfo("Parent row", "Please select a plate row (not a customer).")
+            messagebox.showinfo("Parent row", "Please select a USDOT row (not a customer).")
             return
 
         plate_label = str(values[2]).strip() if len(values) > 2 else ""

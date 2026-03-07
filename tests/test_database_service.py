@@ -121,6 +121,13 @@ class TestDatabaseServiceSchema(unittest.TestCase):
         )
         assert cursor.fetchone() is not None
 
+    def test_usdot_accounts_table_exists(self):
+        """Test that usdot_accounts table exists."""
+        cursor = self.db.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='usdot_accounts'"
+        )
+        assert cursor.fetchone() is not None
+
     def test_invoice_has_date_column(self):
         """Test that invoices table has invoice_date column."""
         cursor = self.db.conn.execute("PRAGMA table_info(invoices)")
@@ -133,6 +140,15 @@ class TestDatabaseServiceSchema(unittest.TestCase):
         columns = {row[1] for row in cursor.fetchall()}
         assert "start_date" in columns
         assert "end_date" in columns
+
+    def test_usdot_link_columns_exist(self):
+        """Trucks/contracts should support USDOT linkage."""
+        trucks_cols = {row[1] for row in self.db.conn.execute("PRAGMA table_info(trucks)").fetchall()}
+        contracts_cols = {row[1] for row in self.db.conn.execute("PRAGMA table_info(contracts)").fetchall()}
+        usdot_cols = {row[1] for row in self.db.conn.execute("PRAGMA table_info(usdot_accounts)").fetchall()}
+        assert "usdot_account_id" in trucks_cols
+        assert "usdot_account_id" in contracts_cols
+        assert "customer_id" in usdot_cols
 
 
 class TestDatabaseServiceBasicOperations(unittest.TestCase):
@@ -290,7 +306,7 @@ class TestDatabaseServiceTableInfo(unittest.TestCase):
         )
         tables = [row[0] for row in cursor.fetchall()]
         
-        expected_tables = ["customers", "trucks", "contracts", "invoices", "payments"]
+        expected_tables = ["customers", "trucks", "contracts", "invoices", "payments", "usdot_accounts"]
         for table in expected_tables:
             assert table in tables
 

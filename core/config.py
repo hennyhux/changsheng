@@ -37,7 +37,6 @@ SEARCH_PLATE_PATTERN = re.compile(r"^[A-Z0-9\-\s]*$")
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 820
 TREE_ROW_HEIGHT = 48
-TREE_ALT_ROW_COLORS = ("#ffffff", "#eef4ff")
 
 
 # ============================================================================
@@ -82,23 +81,12 @@ TAG_COLORS = {
     },
 }
 
-FORM_BALANCE_COLOR_ERROR = "#b00020"
-
 # Button warning colors for delete operations
 DELETE_BUTTON_BG = "#c62828"  # Bold red
-DELETE_BUTTON_FG = "#ffffff"  # White text
-DELETE_BUTTON_HOVER_BG = "#b71c1c"  # Darker red on hover
 
 # Selection highlight color (stronger than default)
 SELECTION_BG = "#1565c0"  # Deeper blue
 SELECTION_FG = "#ffffff"  # White text
-
-EXCEL_FILL_COLORS = {
-    "green": "DDFFDD",
-    "gray": "EEEEEE",
-    "header": "D9E1F2",
-}
-
 
 # ============================================================================
 # THEMES
@@ -206,7 +194,7 @@ PDF_TEXT = {
 }
 
 PDF_HEADERS = {
-    "contracts": ["Contract ID", "Plate", "Rate", "Start", "End", "Expected", "Paid", "Outstanding"],
+    "contracts": ["Contract ID", "USDOT", "Rate", "Start", "End", "Expected", "Paid", "Outstanding"],
     "payments": ["Date", "Amount", "Method", "Contract", "Reference/Notes"],
     "summary": ["Total Expected", "Total Paid", "Total Outstanding", "Next Due Date"],
 }
@@ -327,8 +315,8 @@ COLUMN_ORDER = {
 # COLUMN HEADERS (for language switching)
 # ============================================================================
 COLUMN_HEADINGS_EN = {
-    "customers": {"id": "ID", "name": "Name", "phone": "Phone", "company": "Company", "trucks": "Trucks Parked"},
-    "trucks": {"id": "ID", "plate": "Plate", "state": "State", "make": "Make", "model": "Model", "customer": "Customer"},
+    "customers": {"id": "ID", "name": "Name", "phone": "Phone", "company": "Company"},
+    "trucks": {"id": "ID", "plate": "USDOT", "state": "State", "make": "Make", "model": "Model", "customer": "Customer"},
     "contracts": {"contract_id": "Contract ID", "status": "Status", "customer": "Customer", "scope": "Scope", "rate": "Rate", "start": "Start", "end": "End"},
     "invoices": {"contract_id": "Contract ID", "customer": "Customer", "scope": "Scope", "rate": "Rate", "start": "Start", "end": "End", "months": "Elapsed Months", "expected": "Expected", "paid": "Paid", "balance": "Outstanding", "status": "Status"},
     "overdue": {"month": "Month", "date": "Date", "invoice_id": "Invoice ID", "customer": "Customer", "scope": "Scope", "amount": "Amount", "paid": "Paid", "balance": "Balance"},
@@ -336,7 +324,7 @@ COLUMN_HEADINGS_EN = {
 }
 
 COLUMN_HEADINGS_ZH = {
-    "customers": {"id": "编号", "name": "姓名", "phone": "电话", "company": "公司", "trucks": "停放车辆"},
+    "customers": {"id": "编号", "name": "姓名", "phone": "电话", "company": "公司"},
     "trucks": {"id": "编号", "plate": "车牌", "state": "州", "make": "品牌", "model": "型号", "customer": "客户"},
     "contracts": {"contract_id": "合同编号", "status": "状态", "customer": "客户", "scope": "范围", "rate": "费率", "start": "开始", "end": "结束"},
     "invoices": {"contract_id": "合同编号", "customer": "客户", "scope": "范围", "rate": "费率", "start": "开始", "end": "结束", "months": "累计月数", "expected": "应收", "paid": "已付", "balance": "余额", "status": "状态"},
@@ -346,184 +334,6 @@ COLUMN_HEADINGS_ZH = {
 
 
 # ============================================================================
-# INPUT FIELD WIDTHS
-# ============================================================================
-INPUT_WIDTHS = {
-    "customer_search": 30,
-    "customer_name": 25,
-    "customer_phone": 18,
-    "customer_company": 22,
-    "customer_notes": 80,
-    
-    "truck_search": 20,
-    "truck_plate": 14,
-    "truck_state": 6,
-    "truck_make": 10,
-    "truck_model": 10,
-    "truck_customer": 40,
-    "truck_notes": 42,
-    
-    "contract_customer": 40,
-    "contract_truck": 30,
-    "contract_rate": 12,
-    "contract_date": 12,
-    "contract_notes": 80,
-    
-    "invoice_date": 12,
-    "invoice_month": 12,
-    
-    "payment_amount": 28,
-    "payment_reference": 20,
-    "payment_notes": 40,
-    
-    "language_selector": 6,
-}
-
-
-# ============================================================================
 # PAYMENT METHODS
 # ============================================================================
 PAYMENT_METHODS = ["cash", "card", "zelle", "venmo", "other"]
-
-
-# ============================================================================
-# TAB NAMES & LABELS
-# ============================================================================
-TAB_LABELS_EN = {
-    "dashboard": "📈 Dashboard",
-    "customers": "👥 Customers",
-    "trucks": "🚚 Trucks",
-    "contracts": "📝 Contracts",
-    "billing": "💵 Billing",
-    "invoices": "🧾 Invoices & Payments",
-    "statement": "📊 Monthly Statement",
-    "overdue": "⏰ Overdue",
-    "histories": "🕑 Histories",
-}
-
-TAB_LABELS_ZH = {
-    "dashboard": "📈 仪表板",
-    "customers": "👥 客户",
-    "trucks": "🚚 车辆",
-    "contracts": "📝 合同",
-    "billing": "💵 账单",
-    "invoices": "🧾 发票和付款",
-    "statement": "📊 月度报表",
-    "overdue": "⏰ 逾期",
-    "histories": "🕑 历史",
-}
-
-
-# ============================================================================
-# FORM LABELS & TOOLTIPS
-# ============================================================================
-FORM_LABELS_EN = {
-    "name": "Name*",
-    "phone": "Phone",
-    "company": "Company",
-    "notes": "Notes",
-    "plate": "Plate*",
-    "state": "State",
-    "make": "Make",
-    "model": "Model",
-    "rate": "Monthly Rate*",
-    "start_date": "Start Date",
-    "end_date": "End Date (optional)",
-    "customer": "Customer",
-    "truck": "Truck",
-    "amount": "Amount",
-    "method": "Method",
-    "reference": "Reference",
-    "enter_hint": "(Enter in any field)",
-}
-
-FORM_LABELS_ZH = {
-    "name": "姓名*",
-    "phone": "电话",
-    "company": "公司",
-    "notes": "备注",
-    "plate": "车牌*",
-    "state": "州",
-    "make": "品牌",
-    "model": "型号",
-    "rate": "月费率*",
-    "start_date": "开始日期",
-    "end_date": "结束日期（可选）",
-    "customer": "客户",
-    "truck": "车辆",
-    "amount": "金额",
-    "method": "方式",
-    "reference": "参考",
-    "enter_hint": "（在任何字段中按Enter）",
-}
-
-
-# ============================================================================
-# BUTTON LABELS & COMMANDS
-# ============================================================================
-BUTTON_LABELS_EN = {
-    "add": "Add",
-    "edit": "Edit",
-    "delete": "Delete Selected",
-    "refresh": "Refresh",
-    "export_csv": "Export CSV",
-    "import_csv": "Import CSV",
-    "generate_pdf": "Generate PDF Invoice",
-    "toggle_status": "Toggle Active/Inactive",
-    "view_history": "View Payment History",
-    "fill_payment": "Fill Payment Form",
-    "recalculate": "Recalculate",
-    "collapse_all": "Collapse All",
-    "expand_all": "Expand All",
-    "ok": "OK",
-    "cancel": "Cancel",
-    "save": "Save",
-}
-
-BUTTON_LABELS_ZH = {
-    "add": "添加",
-    "edit": "编辑",
-    "delete": "删除选中",
-    "refresh": "刷新",
-    "export_csv": "导出CSV",
-    "import_csv": "导入CSV",
-    "generate_pdf": "生成PDF发票",
-    "toggle_status": "切换激活/停用",
-    "view_history": "查看付款历史",
-    "fill_payment": "填写付款表单",
-    "recalculate": "重新计算",
-    "collapse_all": "全部收起",
-    "expand_all": "全部展开",
-    "ok": "确定",
-    "cancel": "取消",
-    "save": "保存",
-}
-
-
-# ============================================================================
-# HELPER FUNCTION
-# ============================================================================
-def get_column_config(section: str, search_lang: str = "en") -> dict:
-    """
-    Get complete column configuration for a specific section.
-    
-    Args:
-        section: Section name (e.g., "customers", "trucks", "invoices")
-        search_lang: Language for headers ("en" or "zh")
-    
-    Returns:
-        Dictionary with column names and their configuration including headers
-    """
-    if section not in COLUMN_CONFIGS:
-        raise ValueError(f"Unknown section: {section}")
-    
-    headings = COLUMN_HEADINGS_EN if search_lang == "en" else COLUMN_HEADINGS_ZH
-    
-    config = {}
-    for col_name, col_config in COLUMN_CONFIGS[section].items():
-        config[col_name] = {
-            **col_config,
-            "header": headings[section].get(col_name, col_name),
-        }
-    
-    return config

@@ -30,6 +30,7 @@ from app.mixins import (
     CustomersTabMixin,
     TrucksTabMixin,
     ContractsTabMixin,
+    UsdotTabMixin,
 )
 from core.app_logging import setup_all_loggers, get_app_logger
 from core.runtime_utils import enable_windows_dpi_awareness, log_action
@@ -51,6 +52,7 @@ class App(
     CustomersTabMixin,
     TrucksTabMixin,
     ContractsTabMixin,
+    UsdotTabMixin,
     BaseAppMixin,
     DashboardMixin,
     BillingMixin,

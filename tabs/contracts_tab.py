@@ -1,4 +1,3 @@
-import tkinter as tk
 from tkinter import ttk
 
 from utils.billing_date_utils import today
@@ -80,17 +79,10 @@ def build_contracts_tab(app, frame):
         row=0, column=4, sticky="w", padx=6, pady=6
     )
 
-    ttk.Label(form, text="Contract scope").grid(row=0, column=5, sticky="w", padx=6, pady=6)
-    app.contract_scope = tk.StringVar(value="per_truck")
-    ttk.Radiobutton(form, text="Per truck", variable=app.contract_scope, value="per_truck",
-                    command=app._on_scope_change).grid(row=0, column=6, sticky="w", padx=6)
-    ttk.Radiobutton(form, text="Customer-level", variable=app.contract_scope, value="customer_level",
-                    command=app._on_scope_change).grid(row=0, column=7, sticky="w", padx=6)
-
-    ttk.Label(form, text="Truck (if per truck)").grid(row=1, column=0, sticky="w", padx=6, pady=6)
-    app.contract_truck_combo = ttk.Combobox(form, width=30)
-    app.contract_truck_combo.grid(row=1, column=1, columnspan=2, sticky="w", padx=6, pady=6)
-    app._make_searchable_combo(app.contract_truck_combo)
+    ttk.Label(form, text="USDOT*").grid(row=1, column=0, sticky="w", padx=6, pady=6)
+    app.contract_usdot_combo = ttk.Combobox(form, width=30)
+    app.contract_usdot_combo.grid(row=1, column=1, columnspan=2, sticky="w", padx=6, pady=6)
+    app._make_searchable_combo(app.contract_usdot_combo)
 
     ttk.Label(form, text="Rate ($/mo)*").grid(row=1, column=3, sticky="w", padx=6, pady=6)
     app.contract_rate = ttk.Entry(form, width=12)
@@ -126,5 +118,4 @@ def build_contracts_tab(app, frame):
     app.contract_notes.grid(row=2, column=1, columnspan=10, sticky="ew", padx=6, pady=6)
     app.contract_notes.bind("<Return>", lambda e: app.create_contract())
 
-    app._on_scope_change()
     app._on_contract_customer_changed()

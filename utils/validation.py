@@ -39,9 +39,9 @@ def optional_phone(value: str) -> str | None:
 def required_plate(value: str) -> str:
     cleaned = normalize_whitespace(value).upper().replace("—", "-").replace("–", "-")
     if not cleaned:
-        raise ValueError("Plate is required.")
+        raise ValueError("USDOT is required.")
     if not PLATE_PATTERN.fullmatch(cleaned):
-        raise ValueError("Plate must be 2-15 chars (A-Z, 0-9, dash, space).")
+        raise ValueError("USDOT must be 2-15 chars (A-Z, 0-9, dash, space).")
     return cleaned
 
 

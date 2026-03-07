@@ -8,6 +8,10 @@
 /.venv/
 /build/
 /log/
-`*.pyc
-`__pycache__/
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+*.db-wal
+*.db-shm
 *.log

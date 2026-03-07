@@ -7,6 +7,7 @@ from .invoices_tab import build_invoices_tab
 from .overdue_tab import build_overdue_tab
 from .statement_tab import build_statement_tab
 from .trucks_tab import build_trucks_tab
+from .usdot_tab import build_usdot_tab
 
 __all__ = [
     "build_billing_tab",
@@ -18,4 +19,5 @@ __all__ = [
     "build_overdue_tab",
     "build_statement_tab",
     "build_trucks_tab",
+    "build_usdot_tab",
 ]

@@ -448,14 +448,14 @@ class TestInlineErrorMarkerDetection(unittest.TestCase):
 # 10. Language map key matches actual widget text
 # ---------------------------------------------------------------------------
 class TestLanguageMapKeyMatch(unittest.TestCase):
-    """The hint label on the Invoices tab says 'plate row', so the language
-    map key must also say 'plate row', not 'contract row'.
+    """The hint label on the Invoices tab says 'USDOT row', so the language
+    map key must also say 'USDOT row', not 'contract row'.
     """
 
-    def test_plate_row_key_exists(self):
+    def test_usdot_row_key_exists(self):
         from data.language_map import EN_TO_ZH
 
-        hint_text = "  \u2190 Select a customer or plate row in the table below, then click an action"
+        hint_text = "  \u2190 Select a customer or USDOT row in the table below, then click an action"
         self.assertIn(hint_text, EN_TO_ZH)
 
     def test_contract_row_key_does_not_exist(self):
@@ -474,13 +474,13 @@ class TestLanguageMapKeyMatch(unittest.TestCase):
         source = inspect.getsource(invoices_tab)
         # Find the hint text used in the widget
         for line in source.splitlines():
-            if "plate row" in line and "Select a customer" in line:
+            if "USDOT row" in line and "Select a customer" in line:
                 # Extract the string literal
                 for key in EN_TO_ZH:
-                    if "plate row" in key and "Select a customer" in key:
+                    if "USDOT row" in key and "Select a customer" in key:
                         self.assertIn(key.strip(), line)
                         return
-        self.fail("Could not find 'plate row' hint in invoices_tab source")
+        self.fail("Could not find 'USDOT row' hint in invoices_tab source")
 
 
 # ---------------------------------------------------------------------------

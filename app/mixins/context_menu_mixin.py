@@ -16,8 +16,6 @@ class ContextMenuMixin:
         self.customer_menu.add_command(label="Refresh", command=self.refresh_customers)
 
         self.truck_menu = tk.Menu(self, tearoff=0)
-        self.truck_menu.add_command(label="View Contract History", command=self.view_selected_truck_contract_history)
-        self.truck_menu.add_separator()
         self.truck_menu.add_command(label="Delete Selected", command=self.delete_truck)
         self.truck_menu.add_separator()
         self.truck_menu.add_command(label="Refresh", command=self.refresh_trucks)

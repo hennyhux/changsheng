@@ -24,7 +24,7 @@ def build_customers_tab(app, frame):
     ttk.Button(top, text="🔴 Delete Selected", command=app.delete_customer).grid(row=0, column=4, padx=6)
     ttk.Button(top, text="Generate PDF Invoice", command=app.generate_customer_invoice_pdf).grid(row=0, column=5, padx=6)
 
-    cols = ("id", "name", "phone", "company", "notes", "outstanding", "trucks")
+    cols = ("id", "name", "phone", "company", "notes", "outstanding")
     app.customer_tree = ttk.Treeview(frame, columns=cols, show="headings", height=18)
     customer_headings = {
         "id": "ID",
@@ -33,7 +33,6 @@ def build_customers_tab(app, frame):
         "company": "Company",
         "notes": "Notes",
         "outstanding": "Outstanding",
-        "trucks": "Trucks Parked",
     }
     for c in cols:
         app.customer_tree.heading(
@@ -48,7 +47,6 @@ def build_customers_tab(app, frame):
     app.customer_tree.column("company", width=300, anchor="center", stretch=False)
     app.customer_tree.column("notes", width=520, anchor="center", stretch=True)
     app.customer_tree.column("outstanding", width=190, anchor="center", stretch=False)
-    app.customer_tree.column("trucks", width=220, anchor="center", stretch=False)
     app.customer_tree.grid(row=1, column=0, sticky="nsew", padx=10)
     customer_vsb = ttk.Scrollbar(frame, orient="vertical", command=app.customer_tree.yview)
     app.customer_tree.configure(yscrollcommand=customer_vsb.set)
@@ -106,8 +104,8 @@ def build_customers_tab(app, frame):
 
     app.view_trucks_btn = ttk.Button(
         form,
-        text="View Trucks",
-        command=app._view_selected_customer_trucks,
+        text="View DOT",
+        command=app._view_selected_customer_usdot,
         style="ViewTrucks.TButton",
         state="disabled",
     )

@@ -14,3 +14,4 @@ from .dropdown_cache_mixin import DropdownCacheMixin
 from .customers_tab_mixin import CustomersTabMixin
 from .trucks_tab_mixin import TrucksTabMixin
 from .contracts_tab_mixin import ContractsTabMixin
+from .usdot_tab_mixin import UsdotTabMixin

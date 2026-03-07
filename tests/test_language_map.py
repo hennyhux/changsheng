@@ -87,7 +87,8 @@ class TestLanguageMap(unittest.TestCase):
             "Phone",
             "Company",
             "Notes",
-            "Plate*",
+            "USDOT*",
+            "Driver",
             "State",
             "Make",
             "Model",
@@ -160,7 +161,7 @@ class TestLanguageMap(unittest.TestCase):
     def test_dialog_labels_translated(self):
         """All dialog labels added for dialogs are translated."""
         dialog_keys = [
-            "Plate:", "(customer-level)", "Outstanding Balance:",
+            "USDOT:", "(customer-level)", "Outstanding Balance:",
             "Amount:", "Payment Date:", "Method:", "Reference:",
             "Notes:", "Cancel", "Select", "Confirm Import",
             "Search customer:", "Import Preview", "Contract Details",
@@ -174,10 +175,6 @@ class TestLanguageMap(unittest.TestCase):
     def test_theme_label_translated(self):
         """Top bar Theme: label is translated."""
         assert "Theme:" in EN_TO_ZH
-
-    def test_trucks_parked_translated(self):
-        """Trucks tab 'Trucks Parked' label is translated."""
-        assert "Trucks Parked" in EN_TO_ZH
 
     def test_translate_widget_tree_to_zh(self):
         """translate_widget_tree converts English labels to Chinese."""
