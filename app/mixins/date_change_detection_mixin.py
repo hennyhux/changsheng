@@ -23,12 +23,27 @@ class DateChangeDetectionMixin:
 
     def _init_date_change_detection(self) -> None:
         """Initialize date tracking. Call this in startup."""
+        self._date_change_detection_active = True
         self._app_date = today()
         logger.debug(f"Date change detection initialized for {self._app_date}")
         self._schedule_midnight_check()
 
+    def _cancel_midnight_check(self) -> None:
+        """Cancel the scheduled midnight check if one is pending."""
+        midnight_check_id = getattr(self, "_midnight_check_id", None)
+        if midnight_check_id is None:
+            return
+        try:
+            self.after_cancel(midnight_check_id)
+        except Exception:
+            pass
+        self._midnight_check_id = None
+
     def _schedule_midnight_check(self) -> None:
         """Schedule the next midnight check."""
+        if not getattr(self, "_date_change_detection_active", False):
+            return
+        self._cancel_midnight_check()
         self._midnight_check_id = self.after(
             _MIDNIGHT_CHECK_INTERVAL_MS,
             self._check_for_midnight_rollover,
@@ -37,6 +52,9 @@ class DateChangeDetectionMixin:
     @trace
     def _check_for_midnight_rollover(self) -> None:
         """Check if the date has rolled over to a new day. Refresh if so."""
+        if not getattr(self, "_date_change_detection_active", False):
+            return
+        self._midnight_check_id = None
         current_date = today()
         if current_date != self._app_date:
             logger.info(
@@ -46,31 +64,41 @@ class DateChangeDetectionMixin:
             self._app_date = current_date
             self._refresh_for_date_change()
         # Reschedule next check
-        self._schedule_midnight_check()
+        if getattr(self, "_date_change_detection_active", False):
+            self._schedule_midnight_check()
 
     def _refresh_for_date_change(self) -> None:
         """Refresh all views that depend on the current date."""
-        try:
-            # Refresh views that use today's date
-            self.refresh_customers()
-            self.refresh_trucks()
-            self.refresh_contracts()
-            self.refresh_invoices()
-            self.refresh_dashboard()
-            self.refresh_statement()
-            self.refresh_overdue()
-            logger.info("Date-dependent views refreshed after midnight")
-        except Exception as exc:
-            logger.warning(f"Failed to refresh date-dependent views: {exc}")
+        refresh_methods = (
+            ("customers", self.refresh_customers),
+            ("trucks", self.refresh_trucks),
+            ("contracts", self.refresh_contracts),
+            ("invoices", self.refresh_invoices),
+            ("dashboard", self.refresh_dashboard),
+            ("statement", self.refresh_statement),
+            ("overdue", self.refresh_overdue),
+        )
+        failures: list[str] = []
+        for name, refresh_method in refresh_methods:
+            try:
+                refresh_method()
+            except Exception as exc:
+                failures.append(name)
+                logger.warning(f"Failed to refresh {name} after midnight: {exc}")
+
+        if failures:
+            logger.warning(
+                "Date-dependent refresh completed with failures: %s",
+                ", ".join(failures),
+            )
+            return
+
+        logger.info("Date-dependent views refreshed after midnight")
 
     def on_close(self, force: bool = False) -> None:
         """Override on_close to clean up the midnight check timer."""
-        # Cancel the scheduled timer if it exists
-        if hasattr(self, "_midnight_check_id"):
-            try:
-                self.after_cancel(self._midnight_check_id)
-            except Exception:
-                pass
+        self._date_change_detection_active = False
+        self._cancel_midnight_check()
         # Call parent's on_close (will chain up through MRO)
         super().on_close(force=force)
 

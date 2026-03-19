@@ -15,6 +15,7 @@ _trace_logger = get_trace_logger()
 class DatabaseService:
     SCHEMA_VERSION = 3
     ALLOWED_PAYMENT_METHODS = ("cash", "card", "zelle", "venmo", "other")
+
     def __init__(self, db_path: str):
         self.db_path = db_path
         self.conn = self._connect()
@@ -38,6 +39,8 @@ class DatabaseService:
             if current_version < self.SCHEMA_VERSION:
                 self._migrate_to_v3()
             # Schema already at current version — skip re-running DDL
+
+        self._create_contract_integrity_triggers()
 
         invoice_columns = {
             row["name"]
@@ -192,6 +195,9 @@ class DatabaseService:
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_ym ON invoices(invoice_ym)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id)")
 
+        self._create_contract_integrity_triggers()
+
+    def _create_contract_integrity_triggers(self) -> None:
         self.conn.execute(
             """CREATE TRIGGER IF NOT EXISTS trg_contract_overlap_insert
             BEFORE INSERT ON contracts
@@ -228,6 +234,40 @@ class DatabaseService:
                               AND DATE(COALESCE(NULLIF(NEW.start_date, ''), NEW.start_ym || '-01')) <= DATE(COALESCE(NULLIF(c.end_date, ''), CASE WHEN c.end_ym IS NOT NULL AND TRIM(c.end_ym) <> '' THEN c.end_ym || '-01' ELSE '9999-12-31' END))
                         )
                         THEN RAISE(ABORT, 'Overlapping active contract for same truck')
+                    END;
+            END"""
+        )
+        self.conn.execute(
+            """CREATE TRIGGER IF NOT EXISTS trg_contract_truck_customer_match_insert
+            BEFORE INSERT ON contracts
+            WHEN NEW.truck_id IS NOT NULL
+            BEGIN
+                SELECT
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM trucks t
+                            WHERE t.id = NEW.truck_id
+                              AND (t.customer_id IS NULL OR t.customer_id <> NEW.customer_id)
+                        )
+                        THEN RAISE(ABORT, 'Truck customer mismatch')
+                    END;
+            END"""
+        )
+        self.conn.execute(
+            """CREATE TRIGGER IF NOT EXISTS trg_contract_truck_customer_match_update
+            BEFORE UPDATE ON contracts
+            WHEN NEW.truck_id IS NOT NULL
+            BEGIN
+                SELECT
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM trucks t
+                            WHERE t.id = NEW.truck_id
+                              AND (t.customer_id IS NULL OR t.customer_id <> NEW.customer_id)
+                        )
+                        THEN RAISE(ABORT, 'Truck customer mismatch')
                     END;
             END"""
         )
@@ -379,6 +419,30 @@ class DatabaseService:
         for r in overlaps:
             issues.append(f"Overlapping active contracts for truck {r['truck_id']}: {r['id1']} and {r['id2']}")
 
+        mismatches = self.fetchall(
+            """
+            SELECT ct.id AS contract_id,
+                   ct.customer_id AS contract_customer_id,
+                   t.id AS truck_id,
+                   t.customer_id AS truck_customer_id
+            FROM contracts ct
+            JOIN trucks t ON t.id = ct.truck_id
+            WHERE ct.truck_id IS NOT NULL
+              AND (t.customer_id IS NULL OR t.customer_id <> ct.customer_id)
+            LIMIT 20
+            """
+        )
+        for r in mismatches:
+            issues.append(
+                "Contract {contract_id} links customer {contract_customer_id} to truck {truck_id} "
+                "owned by customer {truck_customer_id}".format(
+                    contract_id=r["contract_id"],
+                    contract_customer_id=r["contract_customer_id"],
+                    truck_id=r["truck_id"],
+                    truck_customer_id=r["truck_customer_id"],
+                )
+            )
+
         return issues
 
     def execute(self, query: str, params: tuple[Any, ...] = ()) -> sqlite3.Cursor:
@@ -390,9 +454,13 @@ class DatabaseService:
     def fetchall(self, query: str, params: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
         return self.conn.execute(query, params).fetchall()
 
-    def count(self, table: str, where_clause: str, params: tuple[Any, ...]) -> int:
-        query = f"SELECT COUNT(*) AS n FROM {self._quote_ident(table)} WHERE {where_clause}"
-        row = self.conn.execute(query, params).fetchone()
+    _COUNTABLE_TABLES = frozenset({"customers", "trucks", "contracts", "invoices", "payments"})
+
+    def count(self, table: str) -> int:
+        if table not in self._COUNTABLE_TABLES:
+            raise ValueError(f"count() not allowed for table {table!r}")
+        query = f"SELECT COUNT(*) AS n FROM {self._quote_ident(table)}"
+        row = self.conn.execute(query).fetchone()
         return int(row["n"]) if row else 0
 
     @trace
@@ -419,7 +487,13 @@ class DatabaseService:
         self.conn.commit()
 
     def close(self) -> None:
-        self.conn.close()
+        if getattr(self, "conn", None) is None:
+            return
+        try:
+            if self.conn.in_transaction:
+                self.conn.rollback()
+        finally:
+            self.conn.close()
 
     def _quote_ident(self, name: str) -> str:
         return '"' + str(name).replace('"', '""') + '"'
@@ -1114,8 +1188,13 @@ class DatabaseService:
 
     @trace
     def delete_truck(self, truck_id: int) -> None:
-        self.execute("DELETE FROM contracts WHERE truck_id=?", (truck_id,))
-        self.execute("DELETE FROM trucks WHERE id=?", (truck_id,))
+        try:
+            self.execute("DELETE FROM contracts WHERE truck_id=?", (truck_id,))
+            self.execute("DELETE FROM trucks WHERE id=?", (truck_id,))
+        except Exception:
+            if self.conn.in_transaction:
+                self.conn.rollback()
+            raise
 
     def create_contract(
         self,

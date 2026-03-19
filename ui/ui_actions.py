@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING, Any, Callable
 
 from utils.billing_date_utils import elapsed_months_inclusive, now_iso, parse_ym, parse_ymd, today, ym
+from utils.outstanding_balance import compute_contract_balance
 from data.language_map import translate_widget_tree, EN_TO_ZH
 from dialogs.contract_edit_dialog import open_contract_edit_dialog
 from core.app_logging import trace, log_ux_action, get_trace_logger
@@ -121,11 +122,11 @@ def restore_database_action(
         db.restore_from_backup(backup_file_path, safety_backup_path)
 
         smoke_counts = {
-            "customers": db.count("customers", "1=1", ()),
-            "trucks": db.count("trucks", "1=1", ()),
-            "contracts": db.count("contracts", "1=1", ()),
-            "invoices": db.count("invoices", "1=1", ()),
-            "payments": db.count("payments", "1=1", ()),
+            "customers": db.count("customers"),
+            "trucks": db.count("trucks"),
+            "contracts": db.count("contracts"),
+            "invoices": db.count("invoices"),
+            "payments": db.count("payments"),
         }
 
         app.refresh_customers()
@@ -465,57 +466,65 @@ def import_customers_trucks_action(
             row["name"].strip().lower(): int(row["id"])
             for row in db.get_all_customer_id_name_rows()
         }
-        for customer in new_customers:
-            customer_id = db.create_customer(
-                customer["name"],
-                customer["phone"] or None,
-                customer["company"] or None,
-                None,
-                now_str,
-            )
-            name_to_id[customer["name"].lower()] = customer_id
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            for customer in new_customers:
+                customer_id = db.create_customer(
+                    customer["name"],
+                    customer["phone"] or None,
+                    customer["company"] or None,
+                    None,
+                    now_str,
+                )
+                name_to_id[customer["name"].lower()] = customer_id
 
-        plate_to_info: dict[str, dict] = {}
-        for truck in new_trucks:
-            customer_id = name_to_id.get(truck["customer_name"].lower())
-            truck_id = db.create_truck(
-                customer_id,
-                truck["plate"],
-                truck["state"] or None,
-                truck["make"] or None,
-                truck["model"] or None,
-                None,
-                now_str,
-            )
-            plate_to_info[truck["plate"]] = {
-                "truck_id": truck_id,
-                "customer_id": customer_id,
-                "rate": truck["rate"],
-                "start_date": truck["start_date"],
-            }
+            plate_to_info: dict[str, dict] = {}
+            for truck in new_trucks:
+                customer_id = name_to_id.get(truck["customer_name"].lower())
+                truck_id = db.create_truck(
+                    customer_id,
+                    truck["plate"],
+                    truck["state"] or None,
+                    truck["make"] or None,
+                    truck["model"] or None,
+                    None,
+                    now_str,
+                )
+                plate_to_info[truck["plate"]] = {
+                    "truck_id": truck_id,
+                    "customer_id": customer_id,
+                    "rate": truck["rate"],
+                    "start_date": truck["start_date"],
+                }
 
-        contracts_created = 0
-        for truck in new_contracts:
-            info = plate_to_info.get(truck["plate"])
-            if not info:
-                continue
-            start_date = info["start_date"]
-            start_ym = start_date[:7] if start_date else today().isoformat()[:7]
-            db.create_contract(
-                info["customer_id"],
-                info["truck_id"],
-                info["rate"],
-                start_ym,
-                None,
-                start_date,
-                None,
-                1,
-                None,
-                now_str,
-            )
-            contracts_created += 1
+            contracts_created = 0
+            for truck in new_contracts:
+                info = plate_to_info.get(truck["plate"])
+                if not info:
+                    continue
+                start_date = info["start_date"]
+                start_ym = start_date[:7] if start_date else today().isoformat()[:7]
+                db.create_contract(
+                    info["customer_id"],
+                    info["truck_id"],
+                    info["rate"],
+                    start_ym,
+                    None,
+                    start_date,
+                    None,
+                    1,
+                    None,
+                    now_str,
+                )
+                contracts_created += 1
 
-        db.commit()
+            db.commit()
+        except Exception:
+            try:
+                db.conn.rollback()
+            except Exception:
+                pass
+            raise
         app.refresh_customers()
         app.refresh_trucks()
         app.refresh_contracts()
@@ -1468,7 +1477,10 @@ def add_truck_action(
         app.t_plate.focus()
         return
 
+    transaction_started = False
     try:
+        db.execute("BEGIN IMMEDIATE")
+        transaction_started = True
         created_at = now_iso()
         truck_id = db.create_truck(customer_id, plate, state, make, model, notes, created_at)
 
@@ -1490,6 +1502,7 @@ def add_truck_action(
             )
 
         db.commit()
+        transaction_started = False
         log_action_cb(
             "ADD_TRUCK",
             (
@@ -1506,8 +1519,20 @@ def add_truck_action(
                 ),
             )
     except sqlite3.IntegrityError:
+        if transaction_started:
+            try:
+                db.conn.rollback()
+            except Exception:
+                pass
         messagebox.showerror("Error", f"Plate '{plate}' already exists or invalid data.")
         return
+    except Exception:
+        if transaction_started:
+            try:
+                db.conn.rollback()
+            except Exception:
+                pass
+        raise
 
     for widget in (app.t_plate, app.t_state, app.t_make, app.t_model, app.t_notes, app.t_contract_rate):
         widget.delete(0, tk.END)
@@ -1570,12 +1595,14 @@ def refresh_contracts_action(
         contract_id = int(row["contract_id"])
         start_date = parse_ymd(str(row["start_date"]))
         end_date = parse_ymd(str(row["end_date"])) if row["end_date"] else None
-        if start_date:
-            effective_end = min(end_date, as_of) if end_date else as_of
-            expected = float(row["monthly_rate"]) * elapsed_months_inclusive(start_date, effective_end)
-            outstanding_amt = expected - paid_by_contract.get(contract_id, 0.0)
-        else:
-            outstanding_amt = 0.0
+        bal = compute_contract_balance(
+            monthly_rate=float(row["monthly_rate"]),
+            start_date_value=row["start_date"],
+            end_date_value=row["end_date"],
+            paid_total=paid_by_contract.get(contract_id, 0.0),
+            as_of_date=as_of,
+        )
+        outstanding_amt = bal.outstanding if bal else 0.0
 
         app.contract_tree.insert(
             "",
@@ -1627,14 +1654,15 @@ def refresh_customers_action(
     outstanding_by_customer_id: dict[int, float] = {}
     for contract in contracts:
         customer_id = int(contract["customer_id"])
-        start_date = parse_ymd(str(contract["start_date"]))
-        if not start_date:
-            continue
         contract_id = int(contract["contract_id"])
-        end_date = parse_ymd(str(contract["end_date"])) if contract["end_date"] else None
-        effective_end = min(end_date, as_of) if end_date else as_of
-        expected = float(contract["monthly_rate"]) * elapsed_months_inclusive(start_date, effective_end)
-        outstanding = expected - paid_by_contract.get(contract_id, 0.0)
+        bal = compute_contract_balance(
+            monthly_rate=float(contract["monthly_rate"]),
+            start_date_value=contract["start_date"],
+            end_date_value=contract["end_date"],
+            paid_total=paid_by_contract.get(contract_id, 0.0),
+            as_of_date=as_of,
+        )
+        outstanding = bal.outstanding if bal else 0.0
         outstanding_by_customer_id[customer_id] = outstanding_by_customer_id.get(customer_id, 0.0) + outstanding
 
     for row_index, row in enumerate(rows):
@@ -1693,14 +1721,14 @@ def refresh_trucks_action(
         contract_row = db.get_preferred_contract_for_truck(int(row["id"]))
         if contract_row:
             contract_id = int(contract_row["contract_id"])
-            start_date = parse_ymd(str(contract_row["start_date"]))
-            end_date = parse_ymd(str(contract_row["end_date"])) if contract_row["end_date"] else None
-            if start_date:
-                effective_end = min(end_date, as_of) if end_date else as_of
-                expected = float(contract_row["monthly_rate"]) * elapsed_months_inclusive(start_date, effective_end)
-                outstanding_amt = expected - paid_by_contract.get(contract_id, 0.0)
-            else:
-                outstanding_amt = 0.0
+            bal = compute_contract_balance(
+                monthly_rate=float(contract_row["monthly_rate"]),
+                start_date_value=contract_row["start_date"],
+                end_date_value=contract_row["end_date"],
+                paid_total=paid_by_contract.get(contract_id, 0.0),
+                as_of_date=as_of,
+            )
+            outstanding_amt = bal.outstanding if bal else 0.0
             outstanding_text = f"${outstanding_amt:.2f}"
 
         app.truck_tree.insert(
@@ -1943,12 +1971,11 @@ def show_customer_ledger_action(
     def _export_ledger() -> None:
         export_customer_ledger_xlsx_cb(
             parent=win,
-            tree=tree,
+            db=db,
             customer_id=customer_id,
             customer_name=customer_name,
             customer_phone=customer_phone,
             customer_company=customer_company,
-            summary_text=summary,
             log_action=log_action_cb,
             default_date=today().isoformat(),
         )

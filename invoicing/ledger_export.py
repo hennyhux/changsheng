@@ -1,24 +1,31 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 import tkinter as tk
 from tkinter import messagebox
 from tkinter.filedialog import asksaveasfilename
 from core.app_logging import trace
+from utils.billing_date_utils import parse_ymd, today
+from utils.outstanding_balance import compute_contract_balance
+
+if TYPE_CHECKING:
+    from data.database_service import DatabaseService
 
 
 @trace
 def export_customer_ledger_xlsx(
     parent: tk.Misc,
-    tree: tk.Misc,
+    db: "DatabaseService",
     customer_id: int,
     customer_name: str,
     customer_phone: str,
     customer_company: str,
-    summary_text: str,
     log_action: Callable[[str, str], None],
     default_date: str | None = None,
+    # Keep old parameter for backward compat — ignored if present.
+    tree: tk.Misc | None = None,
+    summary_text: str | None = None,
 ) -> None:
     try:
         import openpyxl
@@ -38,6 +45,13 @@ def export_customer_ledger_xlsx(
     if not fp:
         return
 
+    # ── Query data from database ────────────────────────────────────
+    contracts = db.get_contracts_for_customer_ledger(customer_id)
+    as_of = today()
+    grand_billed = 0.0
+    grand_paid = 0.0
+
+    # ── Build workbook ──────────────────────────────────────────────
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Ledger"
@@ -73,50 +87,83 @@ def export_customer_ledger_xlsx(
 
     ws.freeze_panes = "A6"
 
-    def _clean_entry(text: str) -> str:
-        t = str(text or "").replace("📋 ", "")
-        t = t.replace("   └ ", "")
-        return t.strip()
+    # ── Populate rows from database ─────────────────────────────────
+    for contract in contracts:
+        contract_id_val = int(contract["id"])
+        is_active = bool(contract["is_active"])
+        rate = float(contract["monthly_rate"])
+        scope = contract["scope"]
+        truck_info = contract["truck_info"] or ""
+        start_d = parse_ymd(contract["start_d"]) if contract["start_d"] else None
+        end_d = parse_ymd(contract["end_d"]) if contract["end_d"] else None
+        start_raw = contract["start_raw"] or ""
+        end_raw = contract["end_raw"] or "ongoing"
+        contract_notes = contract["notes"] or ""
+        status_lbl = "Active" if is_active else "Inactive"
 
-    def _money_to_float(text: str):
-        try:
-            return float(str(text).replace("$", "").replace(",", "").strip())
-        except Exception:
-            return None
+        payments = db.get_payments_for_contract(contract_id_val)
+        total_paid = sum(float(p["amount"]) for p in payments)
+        bal = compute_contract_balance(
+            monthly_rate=rate,
+            start_date_value=contract["start_d"],
+            end_date_value=contract["end_d"],
+            paid_total=total_paid,
+            as_of_date=as_of,
+        )
+        billed = bal.expected_amount if bal else 0.0
+        outstanding = bal.outstanding if bal else 0.0
 
-    for iid in tree.get_children(""):
-        row_vals = list(tree.item(iid, "values"))
-        row_tags = tree.item(iid, "tags")
-        if row_vals:
-            row_vals[0] = _clean_entry(row_vals[0])
+        grand_billed += billed
+        grand_paid += total_paid
 
-        ws.append(list(row_vals))
-        fill = green_fill if "contract_active" in row_tags else gray_fill
+        detail_str = f"{scope}" + (f"  {truck_info}" if truck_info else "")
+        fill = green_fill if is_active else gray_fill
+
+        # Contract row
+        ws.append([
+            f"Contract #{contract_id_val}  [{status_lbl}]",
+            f"{start_raw} \u2192 {end_raw}",
+            billed,
+            total_paid,
+            outstanding,
+            detail_str,
+            contract_notes,
+        ])
         for cell in ws[ws.max_row]:
             cell.fill = fill
             cell.font = bold
+        ws.cell(ws.max_row, 3).number_format = "$#,##0.00"
+        ws.cell(ws.max_row, 4).number_format = "$#,##0.00"
+        ws.cell(ws.max_row, 5).number_format = "$#,##0.00"
 
-        billed = _money_to_float(row_vals[2] if len(row_vals) > 2 else "")
-        paid = _money_to_float(row_vals[3] if len(row_vals) > 3 else "")
-        bal = _money_to_float(row_vals[4] if len(row_vals) > 4 else "")
-        if billed is not None:
-            ws.cell(ws.max_row, 3, billed).number_format = "$#,##0.00"
-        if paid is not None:
-            ws.cell(ws.max_row, 4, paid).number_format = "$#,##0.00"
-        if bal is not None:
-            ws.cell(ws.max_row, 5, bal).number_format = "$#,##0.00"
+        # Payment rows
+        if not payments:
+            ws.append(["(no payments)", "", "", "", "", "", ""])
+        else:
+            for idx, payment in enumerate(payments, start=1):
+                ref_notes = " | ".join(filter(None, [payment["reference"], payment["notes"]]))
+                amt = float(payment["amount"])
+                ws.append([
+                    f"Payment #{idx}",
+                    payment["paid_at"],
+                    None,
+                    amt,
+                    None,
+                    payment["method"],
+                    ref_notes,
+                ])
+                ws.cell(ws.max_row, 4).number_format = "$#,##0.00"
 
-        for child in tree.get_children(iid):
-            child_vals = list(tree.item(child, "values"))
-            if child_vals:
-                child_vals[0] = _clean_entry(child_vals[0])
-            ws.append(child_vals)
-            child_paid = _money_to_float(child_vals[3] if len(child_vals) > 3 else "")
-            if child_paid is not None:
-                ws.cell(ws.max_row, 4, child_paid).number_format = "$#,##0.00"
-
+    # ── Summary row ─────────────────────────────────────────────────
     ws.append([])
-    ws.append([summary_text])
+    grand_outstanding = grand_billed - grand_paid
+    computed_summary = (
+        f"Contracts: {len(contracts)}     "
+        f"Total Billed: ${grand_billed:.2f}     "
+        f"Total Paid: ${grand_paid:.2f}     "
+        f"Total Outstanding: ${grand_outstanding:.2f}"
+    )
+    ws.append([computed_summary])
     ws.merge_cells(f"A{ws.max_row}:G{ws.max_row}")
     ws.cell(ws.max_row, 1).font = Font(bold=True)
     ws.cell(ws.max_row, 1).alignment = left

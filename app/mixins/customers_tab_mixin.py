@@ -75,3 +75,5 @@ class CustomersTabMixin:
             self._set_combo_by_customer_id(self.truck_customer_combo, customer_id)
         if hasattr(self, "contract_customer_combo"):
             self._set_combo_by_customer_id(self.contract_customer_combo, customer_id)
+        if hasattr(self, "contract_truck_combo"):
+            self._filter_contract_trucks(customer_id)

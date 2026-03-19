@@ -32,10 +32,16 @@ class DropdownCacheMixin:
         for combo_name in ("truck_customer_combo", "contract_customer_combo"):
             if hasattr(self, combo_name):
                 combo = getattr(self, combo_name)
+                current = combo.get().strip()
+                selected_customer_id = self._extract_option_id(current)
                 combo["values"] = display
                 combo._search_all_values = display
-                if display and not combo.get():
+                if selected_customer_id is not None and self._set_combo_by_customer_id(combo, selected_customer_id):
+                    continue
+                if display and not current:
                     combo.current(0)
+                elif current and current not in display:
+                    combo.set("")
 
     def _reload_truck_dropdowns(self):
         trucks = self.db.get_truck_dropdown_rows()
@@ -70,13 +76,24 @@ class DropdownCacheMixin:
         display = [self._fmt_truck(truck) for truck in trucks]
         current = self.contract_truck_combo.get().strip() if hasattr(self, "contract_truck_combo") else ""
         if hasattr(self, "contract_truck_combo"):
+            selected_truck_id = self._extract_option_id(current)
             self.contract_truck_combo["values"] = display
             self.contract_truck_combo._search_all_values = display
+            if selected_truck_id is not None and self._set_combo_by_truck_id(self.contract_truck_combo, selected_truck_id):
+                return
             if current not in display:
-                if display:
+                if display and not current:
                     self.contract_truck_combo.current(0)
                 else:
                     self.contract_truck_combo.set("")
+
+    def _extract_option_id(self, value: str) -> int | None:
+        if not value:
+            return None
+        try:
+            return int(value.split(":", 1)[0].strip())
+        except (ValueError, IndexError):
+            return None
 
     def _get_selected_customer_id_from_combo(self, combo: ttk.Combobox) -> int | None:
         val = combo.get().strip()
@@ -107,4 +124,13 @@ class DropdownCacheMixin:
         for index, value in enumerate(vals):
             if value.startswith(f"{customer_id}:"):
                 combo.current(index)
-                return
+                return True
+        return False
+
+    def _set_combo_by_truck_id(self, combo: ttk.Combobox, truck_id: int):
+        vals = list(combo["values"])
+        for index, value in enumerate(vals):
+            if value.startswith(f"{truck_id}:"):
+                combo.current(index)
+                return True
+        return False

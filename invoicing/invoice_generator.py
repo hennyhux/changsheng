@@ -7,6 +7,7 @@ from typing import Any, Mapping
 
 from data.database_service import DatabaseService
 from core.app_logging import trace, get_trace_logger
+from utils.outstanding_balance import compute_contract_balance
 
 _log = get_trace_logger()
 
@@ -128,25 +129,29 @@ def _build_contract_line(
     as_of_date: date,
 ) -> ContractInvoiceLine | None:
     start_date_str = str(row["start_date"]) if row["start_date"] else ""
-    start_date = _parse_ymd(start_date_str)
-    if not start_date:
+    if not _parse_ymd(start_date_str):
         return None
 
     end_date_str = str(row["end_date"]) if row["end_date"] else ""
     parsed_end = _parse_ymd(end_date_str) if end_date_str else None
-    effective_end = min(parsed_end, as_of_date) if parsed_end else as_of_date
     if parsed_end and parsed_end < as_of_date:
         _log.debug(
             "Contract %s end_date %s < as_of %s → capping at end_date",
             row["contract_id"], parsed_end, as_of_date,
         )
 
-    months_elapsed = _elapsed_months_inclusive(start_date, effective_end)
-    monthly_rate = float(row["monthly_rate"])
-    expected_amount = monthly_rate * months_elapsed
     contract_id = int(row["contract_id"])
     paid_total = db.get_paid_total_for_contract_as_of(contract_id, as_of_date.isoformat())
-    outstanding = max(0.0, expected_amount - paid_total)
+    monthly_rate = float(row["monthly_rate"])
+    balance = compute_contract_balance(
+        monthly_rate=monthly_rate,
+        start_date_value=start_date_str,
+        end_date_value=end_date_str,
+        paid_total=paid_total,
+        as_of_date=as_of_date,
+    )
+    if balance is None:
+        return None
 
     return ContractInvoiceLine(
         contract_id=contract_id,
@@ -155,11 +160,11 @@ def _build_contract_line(
         monthly_rate=monthly_rate,
         start_date=start_date_str,
         end_date=end_date_str,
-        months_elapsed=months_elapsed,
-        expected_amount=expected_amount,
-        paid_total=paid_total,
-        outstanding=outstanding,
-        status="PAID" if outstanding <= 0.01 else "DUE",
+        months_elapsed=balance.months_elapsed,
+        expected_amount=balance.expected_amount,
+        paid_total=balance.paid_total,
+        outstanding=balance.outstanding,
+        status="PAID" if balance.outstanding <= 0.01 else "DUE",
     )
 
 
@@ -241,19 +246,23 @@ def build_pdf_invoice_data(
 
         end_date_str = str(row["end_date"]) if row["end_date"] else ""
         parsed_end = _parse_ymd(end_date_str) if end_date_str else None
-        effective_end = min(parsed_end, as_of_date) if parsed_end else as_of_date
         monthly_rate = float(row["monthly_rate"])
-
-        months = _elapsed_months_inclusive(start, effective_end)
-        expected = monthly_rate * months
         paid = paid_by_contract.get(int(row["id"]), 0.0)
-        outstanding = max(0.0, expected - paid)
+        balance = compute_contract_balance(
+            monthly_rate=monthly_rate,
+            start_date_value=start_date_str,
+            end_date_value=end_date_str,
+            paid_total=paid,
+            as_of_date=as_of_date,
+        )
+        if balance is None:
+            continue
 
-        total_expected += expected
-        total_paid += paid
-        total_outstanding += outstanding
+        total_expected += balance.expected_amount
+        total_paid += balance.paid_total
+        total_outstanding += balance.outstanding
 
-        if outstanding > 0.01 and monthly_rate > 0:
+        if balance.outstanding > 0.01 and monthly_rate > 0:
             due_date = _next_due_after(start, as_of_date)
             if end_date_str:
                 parsed_end = _parse_ymd(end_date_str)
@@ -269,9 +278,9 @@ def build_pdf_invoice_data(
                 monthly_rate=monthly_rate,
                 start_date=start_date_str,
                 end_date=end_date_str,
-                expected=expected,
-                paid=paid,
-                outstanding=outstanding,
+                expected=balance.expected_amount,
+                paid=balance.paid_total,
+                outstanding=balance.outstanding,
             )
         )
 

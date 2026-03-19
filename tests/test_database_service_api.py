@@ -7,9 +7,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import os
+import sqlite3
 import tempfile
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 
 from data.database_service import DatabaseService
 
@@ -82,6 +84,15 @@ class TestCustomerCRUD(_DBTestCase):
         row = self.db.get_customer_basic_by_id(cid)
         self.assertIsNone(row)
 
+    def test_close_rolls_back_uncommitted_changes(self):
+        cid = self._add_customer("Unsaved")
+
+        self.db.close()
+        self.db = DatabaseService(self.db_path)
+
+        row = self.db.get_customer_basic_by_id(cid)
+        self.assertIsNone(row)
+
 
 # ---------------------------------------------------------------------------
 # Contract operations
@@ -109,6 +120,36 @@ class TestContractOperations(_DBTestCase):
 
     def test_contract_exists_false_for_missing(self):
         self.assertFalse(self.db.contract_exists(99999))
+
+    def test_create_contract_rejects_truck_customer_mismatch(self):
+        customer1 = self._add_customer("Alice")
+        customer2 = self._add_customer("Bob")
+        truck_id = self._add_truck(customer1, "TX-777")
+        self.db.commit()
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._add_contract(customer2, truck_id=truck_id)
+
+    def test_update_contract_rejects_truck_customer_mismatch(self):
+        customer1 = self._add_customer("Alice")
+        customer2 = self._add_customer("Bob")
+        truck_id = self._add_truck(customer1, "TX-888")
+        contract_id = self._add_contract(customer1, truck_id=truck_id)
+        self.db.commit()
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.update_contract(
+                contract_id,
+                customer2,
+                truck_id,
+                500.0,
+                "2024-01",
+                None,
+                "2024-01-01",
+                None,
+                1,
+                None,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +320,33 @@ class TestDeletePaymentsByContract(_DBTestCase):
         self.assertAlmostEqual(
             self.db.get_paid_total_for_contract_as_of(ct2, "2024-12-31"), 75.0
         )
+
+
+class TestDeleteTruckAtomicity(_DBTestCase):
+    def test_delete_truck_rolls_back_if_second_delete_fails(self):
+        customer_id = self._add_customer()
+        truck_id = self._add_truck(customer_id, "TX-999")
+        contract_id = self._add_contract(customer_id, truck_id=truck_id)
+        self.db.commit()
+
+        original_execute = self.db.execute
+        call_count = {"value": 0}
+
+        def flaky_execute(query, params=()):
+            call_count["value"] += 1
+            if call_count["value"] == 1:
+                return original_execute(query, params)
+            raise RuntimeError("simulated delete failure")
+
+        with patch.object(self.db, "execute", side_effect=flaky_execute):
+            with self.assertRaises(RuntimeError):
+                self.db.delete_truck(truck_id)
+
+        self.db.commit()
+
+        self.assertTrue(self.db.contract_exists(contract_id))
+        truck_row = self.db.fetchone("SELECT id FROM trucks WHERE id=?", (truck_id,))
+        self.assertIsNotNone(truck_row)
 
 
 # ---------------------------------------------------------------------------
