@@ -11,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import unittest
 from invoicing.invoice_generator import (
     _parse_ymd,
-    _elapsed_months_inclusive,
     _add_months,
 )
 
@@ -53,67 +52,6 @@ class TestInvoiceGeneratorParseYmd(unittest.TestCase):
         """Test YMD parsing with invalid leap day."""
         result = _parse_ymd("2023-02-29")
         assert result is None
-
-
-class TestInvoiceGeneratorElapsedMonths(unittest.TestCase):
-    """Test invoice generator elapsed months calculation."""
-
-    def test_elapsed_months_same_day(self):
-        """Test elapsed months for same day."""
-        start = date(2024, 3, 15)
-        end = date(2024, 3, 15)
-        result = _elapsed_months_inclusive(start, end)
-        assert result == 1
-
-    def test_elapsed_months_one_month(self):
-        """Test elapsed months for one month."""
-        start = date(2024, 3, 15)
-        end = date(2024, 4, 15)
-        result = _elapsed_months_inclusive(start, end)
-        assert result == 2
-
-    def test_elapsed_months_six_months(self):
-        """Test elapsed months for six months."""
-        start = date(2024, 1, 15)
-        end = date(2024, 6, 15)
-        result = _elapsed_months_inclusive(start, end)
-        assert result == 6
-
-    def test_elapsed_months_one_year(self):
-        """Test elapsed months for one year."""
-        start = date(2024, 3, 15)
-        end = date(2025, 3, 15)
-        result = _elapsed_months_inclusive(start, end)
-        assert result == 13
-
-    def test_elapsed_months_end_before_start(self):
-        """Test elapsed months when end is before start."""
-        start = date(2024, 4, 15)
-        end = date(2024, 3, 15)
-        result = _elapsed_months_inclusive(start, end)
-        assert result == 0
-
-    def test_elapsed_months_day_boundary(self):
-        """Test elapsed months at day boundary — end-of-month counts as full month."""
-        start = date(2024, 3, 31)
-        end = date(2024, 4, 30)
-        result = _elapsed_months_inclusive(start, end)
-        # Apr 30 is the last day of April, so the full month is counted
-        assert result == 2
-
-    def test_elapsed_months_multiple_years(self):
-        """Test elapsed months across multiple years."""
-        start = date(2022, 1, 15)
-        end = date(2024, 1, 15)
-        result = _elapsed_months_inclusive(start, end)
-        assert result == 25
-
-    def test_elapsed_months_leap_year(self):
-        """Test elapsed months across leap year."""
-        start = date(2024, 2, 29)
-        end = date(2024, 3, 29)
-        result = _elapsed_months_inclusive(start, end)
-        assert result == 2
 
 
 class TestInvoiceGeneratorAddMonths(unittest.TestCase):

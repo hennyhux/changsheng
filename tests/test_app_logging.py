@@ -37,7 +37,6 @@ from core.app_logging import (
     log_ux_action_result,
     log_exception,
     trace,
-    trace_method,
     _ensure_log_dir,
     _LOG_DIR,
 )
@@ -286,16 +285,6 @@ class TestTraceDecorator(unittest.TestCase):
         self.assertIn("ENTER", content)
         # Should have truncated the arg repr
         self.assertIn("...", content)
-
-    def test_trace_method_works_same_as_trace(self):
-        @trace_method
-        def my_method():
-            return 99
-
-        result = my_method()
-        self.assertEqual(result, 99)
-        content = self._get_trace_content()
-        self.assertIn("my_method", content)
 
     def test_trace_with_kwargs(self):
         @trace

@@ -783,13 +783,6 @@ class DatabaseService:
         return float(row["paid_total"]) if row else 0.0
 
     @trace
-    def get_total_payments_for_invoice(self, invoice_id: int) -> float:
-        row = self.fetchone(
-            "SELECT COALESCE(SUM(amount), 0) AS s FROM payments WHERE invoice_id=?",
-            (invoice_id,),
-        )
-        return float(row["s"]) if row else 0.0
-
     @trace
     def get_active_contracts_with_customer_plate_for_invoices(self) -> list[sqlite3.Row]:
         return self.fetchall(
@@ -995,27 +988,6 @@ class DatabaseService:
         )
 
     @trace
-    def get_overdue_invoice_rows(self, as_of_iso: str) -> list[sqlite3.Row]:
-        return self.fetchall(
-            """
-            SELECT
-                i.id AS invoice_id,
-                i.invoice_ym,
-                i.invoice_date,
-                i.amount,
-                c.name AS customer_name,
-                t.plate AS plate
-            FROM invoices i
-            JOIN contracts ct ON ct.id=i.contract_id
-            JOIN customers c ON c.id=ct.customer_id
-            LEFT JOIN trucks t ON t.id=ct.truck_id
-            WHERE i.invoice_date <= ?
-            ORDER BY i.invoice_date ASC, customer_name ASC
-            """,
-            (as_of_iso,),
-        )
-
-    @trace
     def get_contracts_for_statement(self) -> list[sqlite3.Row]:
         return self.fetchall(
             """
@@ -1030,17 +1002,6 @@ class DatabaseService:
                 END AS end_date,
                 ct.is_active
             FROM contracts ct
-            """
-        )
-
-    @trace
-    def get_paid_totals_by_contract(self) -> list[sqlite3.Row]:
-        return self.fetchall(
-            """
-            SELECT i.contract_id, COALESCE(SUM(p.amount), 0) AS paid_total
-            FROM payments p
-            JOIN invoices i ON i.id = p.invoice_id
-            GROUP BY i.contract_id
             """
         )
 
@@ -1189,8 +1150,10 @@ class DatabaseService:
     @trace
     def delete_truck(self, truck_id: int) -> None:
         try:
+            self.conn.execute("BEGIN IMMEDIATE")
             self.execute("DELETE FROM contracts WHERE truck_id=?", (truck_id,))
             self.execute("DELETE FROM trucks WHERE id=?", (truck_id,))
+            self.conn.commit()
         except Exception:
             if self.conn.in_transaction:
                 self.conn.rollback()
@@ -1340,7 +1303,7 @@ class DatabaseService:
                    COALESCE(ct.start_date, ct.start_ym) AS start_raw,
                    COALESCE(ct.end_date,   ct.end_ym)   AS end_raw,
                    CASE WHEN ct.truck_id IS NULL THEN 'Customer' ELSE 'Per Truck' END AS scope,
-                   t.plate || COALESCE(' ' || t.state, '') AS truck_info
+                   COALESCE(t.plate || COALESCE(' ' || t.state, ''), '') AS truck_info
             FROM contracts ct
             LEFT JOIN trucks t ON t.id = ct.truck_id
             WHERE ct.customer_id = ?
@@ -1348,18 +1311,6 @@ class DatabaseService:
             """,
             (customer_id,),
         )
-
-    @trace
-    def get_total_paid_for_contract(self, contract_id: int) -> float:
-        row = self.fetchone(
-            """
-            SELECT COALESCE(SUM(p.amount), 0) AS total
-            FROM payments p JOIN invoices i ON i.id=p.invoice_id
-            WHERE i.contract_id=?
-            """,
-            (contract_id,),
-        )
-        return float(row["total"]) if row else 0.0
 
     @trace
     def get_payments_for_contract(self, contract_id: int) -> list[sqlite3.Row]:

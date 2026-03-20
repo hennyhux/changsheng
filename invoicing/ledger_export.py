@@ -156,7 +156,7 @@ def export_customer_ledger_xlsx(
 
     # ── Summary row ─────────────────────────────────────────────────
     ws.append([])
-    grand_outstanding = grand_billed - grand_paid
+    grand_outstanding = max(0.0, grand_billed - grand_paid)
     computed_summary = (
         f"Contracts: {len(contracts)}     "
         f"Total Billed: ${grand_billed:.2f}     "

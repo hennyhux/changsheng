@@ -374,7 +374,3 @@ def trace(func: F) -> F:
 
     return wrapper  # type: ignore
 
-
-def trace_method(func: F) -> F:
-    """Alias for ``trace`` — use on class methods for clarity."""
-    return trace(func)

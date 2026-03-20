@@ -112,29 +112,6 @@ class BackupStartupMixin:
             except Exception as exc:
                 logger.warning(f"Failed to remove old backup {stale}: {exc}")
 
-    # ── Legacy startup prompt (kept for manual reminders) ───────────
-
-    def _prompt_backup_on_startup(self):
-        last_backup = self._get_last_backup_date()
-        zh = getattr(self, "current_language", "en") == "zh"
-        if last_backup:
-            days_since = (today() - last_backup).days
-            msg = (f"距离上次备份已经过去 {days_since} 天。\n现在备份数据库吗？"
-                   if zh else
-                   f"It has been {days_since} days since the last backup.\nBack up the database now?")
-            logger.info(f"Startup backup reminder: {days_since} days since last backup.")
-        else:
-            msg = ("还没有备份记录。\n现在备份数据库吗？"
-                   if zh else
-                   "No backup records found.\nBack up the database now?")
-            logger.info("Startup backup reminder: no previous backup found.")
-
-        title = "备份提示" if zh else "Backup Reminder"
-        do_backup = messagebox.askyesno(title, msg)
-        logger.info(f"Startup backup prompt response: {'yes' if do_backup else 'no'}")
-        if do_backup:
-            self.backup_database()
-
     # ── Hourly scheduled backup ─────────────────────────────────────
 
     def _start_hourly_backup_scheduler(self) -> None:
@@ -160,9 +137,12 @@ class BackupStartupMixin:
 
     def on_close(self, force: bool = False) -> None:
         """Cancel the hourly backup timer before closing."""
+        super().on_close(force=force)
+        # Cleanup after super so timers stay alive if user cancels the
+        # close dialog.  After destroy() Tk auto-invalidates pending
+        # callbacks, but we cancel explicitly for tidiness.
         if hasattr(self, "_hourly_backup_timer_id"):
             try:
                 self.after_cancel(self._hourly_backup_timer_id)
             except Exception:
                 pass
-        super().on_close(force=force)

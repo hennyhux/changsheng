@@ -365,46 +365,6 @@ class TestContractMenuEntryCount(unittest.TestCase):
         self.assertEqual(valid_indices, {0, 2, 3})
 
 
-# ---------------------------------------------------------------------------
-# 10. backup_startup_mixin — language-aware prompt
-# ---------------------------------------------------------------------------
-
-class TestBackupPromptLanguage(unittest.TestCase):
-    """Backup prompt must use the correct language based on current_language."""
-
-    @patch("app.mixins.backup_startup_mixin.messagebox")
-    def test_english_prompt_when_language_is_en(self, mock_mb):
-        from app.mixins.backup_startup_mixin import BackupStartupMixin
-
-        mixin = MagicMock(spec=BackupStartupMixin)
-        mixin.current_language = "en"
-        mixin._get_last_backup_date = MagicMock(return_value=None)
-        mock_mb.askyesno = MagicMock(return_value=False)
-
-        BackupStartupMixin._prompt_backup_on_startup(mixin)
-
-        call_args = mock_mb.askyesno.call_args
-        title = call_args[0][0]
-        msg = call_args[0][1]
-        self.assertEqual(title, "Backup Reminder")
-        self.assertIn("No backup records found", msg)
-
-    @patch("app.mixins.backup_startup_mixin.messagebox")
-    def test_chinese_prompt_when_language_is_zh(self, mock_mb):
-        from app.mixins.backup_startup_mixin import BackupStartupMixin
-
-        mixin = MagicMock(spec=BackupStartupMixin)
-        mixin.current_language = "zh"
-        mixin._get_last_backup_date = MagicMock(return_value=date(2026, 2, 20))
-        mock_mb.askyesno = MagicMock(return_value=False)
-
-        BackupStartupMixin._prompt_backup_on_startup(mixin)
-
-        call_args = mock_mb.askyesno.call_args
-        title = call_args[0][0]
-        msg = call_args[0][1]
-        self.assertEqual(title, "备份提示")
-        self.assertIn("距离上次备份已经过去", msg)
 
 
 if __name__ == "__main__":

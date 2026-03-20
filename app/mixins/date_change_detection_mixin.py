@@ -97,8 +97,9 @@ class DateChangeDetectionMixin:
 
     def on_close(self, force: bool = False) -> None:
         """Override on_close to clean up the midnight check timer."""
+        # Call parent first so the confirmation dialog runs before we
+        # disable timers.  If the user cancels, detection stays active.
+        super().on_close(force=force)
         self._date_change_detection_active = False
         self._cancel_midnight_check()
-        # Call parent's on_close (will chain up through MRO)
-        super().on_close(force=force)
 

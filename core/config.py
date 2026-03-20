@@ -499,31 +499,3 @@ BUTTON_LABELS_ZH = {
     "save": "保存",
 }
 
-
-# ============================================================================
-# HELPER FUNCTION
-# ============================================================================
-def get_column_config(section: str, search_lang: str = "en") -> dict:
-    """
-    Get complete column configuration for a specific section.
-    
-    Args:
-        section: Section name (e.g., "customers", "trucks", "invoices")
-        search_lang: Language for headers ("en" or "zh")
-    
-    Returns:
-        Dictionary with column names and their configuration including headers
-    """
-    if section not in COLUMN_CONFIGS:
-        raise ValueError(f"Unknown section: {section}")
-    
-    headings = COLUMN_HEADINGS_EN if search_lang == "en" else COLUMN_HEADINGS_ZH
-    
-    config = {}
-    for col_name, col_config in COLUMN_CONFIGS[section].items():
-        config[col_name] = {
-            **col_config,
-            "header": headings[section].get(col_name, col_name),
-        }
-    
-    return config

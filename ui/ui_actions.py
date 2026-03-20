@@ -635,6 +635,11 @@ def open_payment_form_for_contract_action(
 
             # Anchor payment to the paid_at month for correct invoice-month attribution.
             invoice_id = get_or_create_anchor_invoice_cb(contract_id, paid_at_date)
+            if not invoice_id:
+                db.conn.rollback()
+                transaction_started = False
+                messagebox.showerror("Payment failed", "Could not create or find the anchor invoice for this payment.")
+                return False
             db.create_payment(invoice_id, paid_at_date.isoformat(), amt, method, ref_val, notes_val)
             db.commit()
             transaction_started = False
@@ -1900,16 +1905,17 @@ def show_customer_ledger_action(
         contract_notes = contract["notes"] or ""
         status_lbl = "Active" if is_active else "Inactive"
 
-        if start_d:
-            effective_end = min(end_d, as_of) if end_d else as_of
-            months_elapsed = elapsed_months_inclusive(start_d, effective_end)
-            billed = rate * months_elapsed
-        else:
-            billed = 0.0
-
         payments = db.get_payments_for_contract(contract_id)
         total_paid = sum(float(payment["amount"]) for payment in payments)
-        outstanding = billed - total_paid
+        bal = compute_contract_balance(
+            monthly_rate=rate,
+            start_date_value=contract["start_d"],
+            end_date_value=contract["end_d"],
+            paid_total=total_paid,
+            as_of_date=as_of,
+        )
+        billed = bal.expected_amount if bal else 0.0
+        outstanding = bal.outstanding if bal else 0.0
 
         grand_billed += billed
         grand_paid += total_paid
@@ -2020,6 +2026,9 @@ def refresh_overdue_action(
     paid_by_contract = {int(row["contract_id"]): float(row["paid_total"]) for row in paid_rows}
     query_l = normalize_whitespace(search_query).lower()
     visible_row_index = 0
+    total_expected = 0.0
+    total_paid = 0.0
+    total_outstanding = 0.0
 
     for row in rows:
         customer_name = str(row["customer_name"] or "")
@@ -2031,17 +2040,24 @@ def refresh_overdue_action(
         if not start_date or start_date > as_of:
             continue
 
-        end_date = parse_ymd_cb(row["end_date"]) if row["end_date"] else None
         # Inactive contracts without an end date: use as_of as the effective
         # end so outstanding balance is still shown (prevents silent debt hiding).
-        if int(row["is_active"]) != 1 and end_date is None:
-            end_date = as_of
+        end_date_value = row["end_date"]
+        if int(row["is_active"]) != 1 and not end_date_value:
+            end_date_value = as_of.isoformat()
 
-        effective_end = min(end_date, as_of) if end_date else as_of
-        months_elapsed = elapsed_months_inclusive(start_date, effective_end)
-        expected = float(row["monthly_rate"]) * months_elapsed
         paid = paid_by_contract.get(int(row["contract_id"]), 0.0)
-        bal = expected - paid
+        bal_obj = compute_contract_balance(
+            monthly_rate=float(row["monthly_rate"]),
+            start_date_value=row["start_date"],
+            end_date_value=end_date_value,
+            paid_total=paid,
+            as_of_date=as_of,
+        )
+        if not bal_obj:
+            continue
+        expected = bal_obj.expected_amount
+        bal = bal_obj.outstanding
 
         if bal > 0.01:
             scope = plate if plate else "(customer-level)"
@@ -2049,7 +2065,6 @@ def refresh_overdue_action(
                 "",
                 "end",
                 values=(
-                    as_of_month,
                     as_of.isoformat(),
                     int(row["contract_id"]),
                     customer_name,
@@ -2060,9 +2075,23 @@ def refresh_overdue_action(
                 ),
                 tags=(row_stripe_tag_cb(visible_row_index), outstanding_tag_from_amount_cb(bal)),
             )
+            total_expected += expected
+            total_paid += paid
+            total_outstanding += bal
             visible_row_index += 1
 
     app._reapply_tree_sort(app.overdue_tree)
+
+    # Update summary bar
+    noun = "contract" if visible_row_index == 1 else "contracts"
+    if hasattr(app, "overdue_count_var"):
+        app.overdue_count_var.set(f"{visible_row_index} overdue {noun}")
+    if hasattr(app, "overdue_total_expected_var"):
+        app.overdue_total_expected_var.set(f"Expected: ${total_expected:,.2f}")
+    if hasattr(app, "overdue_total_paid_var"):
+        app.overdue_total_paid_var.set(f"Paid: ${total_paid:,.2f}")
+    if hasattr(app, "overdue_total_balance_var"):
+        app.overdue_total_balance_var.set(f"Outstanding: ${total_outstanding:,.2f}")
 
 
 @safe_ui_action("Refresh Statement")
@@ -2151,8 +2180,6 @@ def refresh_statement_action(
 
         contract_paid = paid_by_contract.get(int(row["contract_id"]), 0.0)
         allocated_for_month = min(contract_paid, expected_for_month)
-        if allocated_for_month > expected_for_month:
-            allocated_for_month = expected_for_month
         paid_total += allocated_for_month
 
     if hasattr(app, "statement_expected_chart_canvas"):
@@ -2274,6 +2301,34 @@ def refresh_histories_action(
     except Exception as exc:
         logger.warning(f"Failed to read history log file: {exc}")
         log = "(No log file found)\n"
+
+    # Extract unique action types and populate the filter combobox.
+    action_types: set[str] = set()
+    for line in log.splitlines():
+        if line.startswith("[") and "] " in line:
+            after_bracket = line.split("] ", 1)[1]
+            action_type = after_bracket.split(" |", 1)[0].strip()
+            if action_type:
+                action_types.add(action_type)
+
+    if hasattr(app, "histories_filter"):
+        current_filter = app.histories_filter.get()
+        sorted_types = ["All"] + sorted(action_types)
+        app.histories_filter["values"] = sorted_types
+        if current_filter in sorted_types:
+            app.histories_filter.set(current_filter)
+        else:
+            app.histories_filter.current(0)
+            current_filter = "All"
+
+        if current_filter != "All":
+            filtered_lines = [
+                line for line in log.splitlines()
+                if not line.startswith("[")
+                or ("] " in line and line.split("] ", 1)[1].startswith(current_filter + " "))
+            ]
+            log = "\n".join(filtered_lines)
+
     app.histories_text.configure(state="normal")
     app.histories_text.delete("1.0", tk.END)
     app.histories_text.insert("1.0", log)
@@ -2674,21 +2729,15 @@ def get_contract_outstanding_as_of_action(
     if not row:
         return 0.0
 
-    start_date = parse_ymd(row["start_date"])
-    if not start_date:
-        return 0.0
-
-    effective_end = as_of_date
-    if row["end_date"]:
-        parsed_end = parse_ymd(row["end_date"])
-        if parsed_end:
-            effective_end = min(parsed_end, as_of_date)
-
-    months_elapsed = elapsed_months_inclusive(start_date, effective_end)
-    expected_amount = float(row["monthly_rate"]) * months_elapsed
-
     paid_total = db.get_paid_total_for_contract_as_of(contract_id, as_of_date.isoformat())
-    return max(0.0, expected_amount - paid_total)
+    bal = compute_contract_balance(
+        monthly_rate=float(row["monthly_rate"]),
+        start_date_value=row["start_date"],
+        end_date_value=row["end_date"],
+        paid_total=paid_total,
+        as_of_date=as_of_date,
+    )
+    return bal.outstanding if bal else 0.0
 
 
 @safe_ui_action("Clear Invoice Search")
