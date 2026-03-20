@@ -197,6 +197,15 @@ class BillingMixin:
         self._overdue_search_after_id = None
         self.refresh_overdue()
 
+    def _schedule_overdue_date_refresh(self, delay_ms: int = 500):
+        if getattr(self, "_overdue_date_after_id", None) is not None:
+            self.after_cancel(self._overdue_date_after_id)
+        self._overdue_date_after_id = self.after(delay_ms, self._run_overdue_date_refresh)
+
+    def _run_overdue_date_refresh(self):
+        self._overdue_date_after_id = None
+        self.refresh_overdue()
+
     def _clear_overdue_search(self):
         if getattr(self, "_overdue_search_after_id", None) is not None:
             self.after_cancel(self._overdue_search_after_id)
@@ -213,10 +222,10 @@ class BillingMixin:
         if not sel:
             return None
         values = self.overdue_tree.item(sel[0], "values")
-        if not values or len(values) < 3:
+        if not values or len(values) < 2:
             return None
         try:
-            return int(str(values[2]).strip())
+            return int(str(values[1]).strip())
         except (ValueError, TypeError):
             return None
 
@@ -229,17 +238,17 @@ class BillingMixin:
             return
 
         values = self.overdue_tree.item(sel[0], "values")
-        if not values or len(values) < 5:
+        if not values or len(values) < 4:
             messagebox.showerror("Invalid selection", "Could not read selected overdue row.")
             return
 
         try:
-            contract_id = int(str(values[2]).strip())
+            contract_id = int(str(values[1]).strip())
         except (ValueError, TypeError):
             messagebox.showerror("Invalid selection", "Selected contract ID is invalid.")
             return
 
-        scope_value = str(values[4]).strip()
+        scope_value = str(values[3]).strip()
         plate_label = None if scope_value.lower() in {"(customer-level)", "customer-level"} else scope_value
 
         as_of_date = None

@@ -13,11 +13,15 @@ def build_overdue_tab(app, frame):
     frame.rowconfigure(1, weight=1)
 
     top = ttk.Frame(frame)
-    top.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+    top.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=10)
     ttk.Button(
         top, text="💰  Record Payment",
         command=app._record_payment_for_selected_overdue,
         style="Payment.TButton",
+    ).pack(side="left", padx=(0, 8))
+    ttk.Button(
+        top, text="📄  Invoice PDF",
+        command=app._generate_invoice_pdf_for_selected_overdue,
     ).pack(side="left", padx=(0, 8))
     ttk.Button(top, text="Refresh", command=app.refresh_overdue).pack(side="left")
     ttk.Label(top, text="As-of Date (YYYY-MM-DD):").pack(side="left", padx=(12, 4))
@@ -28,6 +32,9 @@ def build_overdue_tab(app, frame):
         date_entry_cls=getattr(app, "date_entry_cls", None),
     )
     app.overdue_as_of.pack(side="left")
+    app.overdue_as_of.bind("<<DateEntrySelected>>", lambda _e: app.refresh_overdue())
+    app.overdue_as_of.bind("<Return>", lambda _e: app.refresh_overdue())
+    app.overdue_as_of.bind("<FocusOut>", lambda _e: app._schedule_overdue_date_refresh())
     ttk.Label(top, text="Search:").pack(side="left", padx=(12, 4))
     app.overdue_search = ttk.Entry(top, width=24)
     app.overdue_search.pack(side="left")
@@ -35,11 +42,22 @@ def build_overdue_tab(app, frame):
     app.overdue_search.bind("<Return>", lambda _e: app.refresh_overdue())
     app.overdue_search.bind("<KeyRelease>", app._on_overdue_search_keyrelease)
     ttk.Button(top, text="Clear", command=app._clear_overdue_search).pack(side="left", padx=6)
-    ttk.Label(top, text="Shows contracts with outstanding balance as of the selected date.").pack(side="left", padx=10)
 
-    cols = ("month", "date", "invoice_id", "customer", "scope", "amount", "paid", "balance")
+    # ── Summary bar ─────────────────────────────────────────────────
+    summary = ttk.Frame(frame)
+    summary.grid(row=2, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 6))
+    app.overdue_count_var = tk.StringVar(value="0 overdue contracts")
+    app.overdue_total_expected_var = tk.StringVar(value="Expected: $0.00")
+    app.overdue_total_paid_var = tk.StringVar(value="Paid: $0.00")
+    app.overdue_total_balance_var = tk.StringVar(value="Outstanding: $0.00")
+    ttk.Label(summary, textvariable=app.overdue_count_var, font=("Segoe UI", 10, "bold")).pack(side="left", padx=(0, 20))
+    ttk.Label(summary, textvariable=app.overdue_total_expected_var).pack(side="left", padx=(0, 16))
+    ttk.Label(summary, textvariable=app.overdue_total_paid_var).pack(side="left", padx=(0, 16))
+    ttk.Label(summary, textvariable=app.overdue_total_balance_var, font=("Segoe UI", 10, "bold")).pack(side="left")
+
+    cols = ("date", "invoice_id", "customer", "scope", "amount", "paid", "balance")
     app.overdue_tree = ttk.Treeview(frame, columns=cols, show="headings", height=22)
-    overdue_headings = {"month": "Month", "date": "Date", "invoice_id": "Contract ID", "customer": "Customer", "scope": "Scope", "amount": "Amount", "paid": "Paid", "balance": "Balance"}
+    overdue_headings = {"date": "As-of Date", "invoice_id": "Contract ID", "customer": "Customer", "scope": "Scope", "amount": "Expected", "paid": "Paid", "balance": "Outstanding"}
     for c in cols:
         app.overdue_tree.heading(
             c,
