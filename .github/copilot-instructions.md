@@ -12,10 +12,11 @@
 - Cross-cutting concerns belong in `core/`, including logging, runtime behavior, config, and settings.
 
 ## Build And Test
-- Use Python 3.10+ semantics.
+- The venv is Python 3.9.6. Use Python 3.10+ semantics where the codebase already does (e.g. `X | None` unions), but verify compatibility.
 - Run the app with `python changsheng.py`.
-- Run the test suite with `python -m unittest discover tests`.
+- Run the test suite with `python -m pytest tests/` (pytest is installed) or `python -m unittest discover tests`.
 - When changing focused logic, run the most relevant tests first, then expand only if needed.
+- Build the exe with `python -m PyInstaller changsheng.spec --clean --noconfirm`. The spec uses `collect_submodules` for all app packages, so new modules are auto-discovered.
 
 ## Conventions
 - Preserve bilingual UI behavior. If you add or change user-visible text, check whether it also needs to work with the translation flow in `data/language_map.py` or existing widget-tree translation helpers.
@@ -23,3 +24,14 @@
 - For billing, invoice, payment, or outstanding-balance work, prefer fixing logic at the data or service layer instead of patching display-only symptoms.
 - Keep database-related changes backward-compatible where possible and cover them with `tests/` updates.
 - Prefer the existing `unittest` style used throughout `tests/` rather than introducing a different test framework or style in new tests.
+
+## Database Schema Changes
+- `_init_db()` in `database_service.py` skips DDL when the schema version matches. If you add a new table, you must also ensure it gets created for **existing** databases — add an `_ensure_<table>_table()` method using `CREATE TABLE IF NOT EXISTS` and call it unconditionally from `_init_db()`, similar to how `_create_contract_integrity_triggers()` runs every startup.
+- Always check the current `create_contract()` signature before writing tests — it requires `start_ym` and `end_ym` parameters.
+
+## Dialog Patterns
+- `translate_widget_tree(root, language)` requires a `language` argument. Dialogs retrieve it via `lang = getattr(parent, "current_language", "en")` and only translate when `lang != "en"`. See `payment_popup.py` for the canonical pattern.
+- Logging callbacks (`log_action_cb`) always take **two** arguments: `(event_type: str, details: str)`. See `core/runtime_utils.py`.
+
+## Context Menu Changes
+- Context menus in `context_menu_mixin.py` are translated by index in `theme_language_mixin.py` using `entryconfigure(index, label=...)`. If you add, remove, or reorder menu items, you **must** update the corresponding index numbers in `theme_language_mixin.py` or the wrong labels will appear.
